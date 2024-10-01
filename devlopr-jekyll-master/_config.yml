@@ -1,3 +1,5 @@
+incremental: true
+
 title: MTT
 subtitle: A Portfolio Jekyll Theme Built for Developers
 description: >- # this means to ignore newlines until "baseurl:"
@@ -53,8 +55,8 @@ author_education_details:
               - college_logo: mit.png
                 college_name: Florida State University
                 college_url: https://mit.org
-                college_degree: CS Engineer
-                description: Bachelor of Technology
+                college_degree: Management Information Systems
+                description: Bachelor's of Science
                 visibility: true
 
 # Projects
