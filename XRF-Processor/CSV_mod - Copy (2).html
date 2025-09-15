@@ -44,23 +44,10 @@
   .table-container { background: white; border-radius: 15px; border: 1px solid #e2e8f0;
     overflow: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.05); max-height: 70vh; }
   table { width: 100%; border-collapse: collapse; }
-  th { background: #f1f5f9; padding: 10px; font-weight: 600; border-bottom: 2px solid #e2e8f0; 
-    position: sticky; top: 0; z-index: 10; }
+  th { background: #f1f5f9; padding: 10px; font-weight: 600; border-bottom: 2px solid #e2e8f0; }
   td { padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: 12px; white-space: nowrap; }
-  
-  /* Freeze first few columns */
-  th:nth-child(1), td:nth-child(1) { /* File# */
-    position: sticky; left: 0; z-index: 11; background: #f8fafc; 
-    border-right: 2px solid #e2e8f0; min-width: 80px;
-  }
-  
-  /* Header cells for frozen columns should have higher z-index */
-  th:nth-child(1), th:nth-child(2), th:nth-child(3) { 
-    z-index: 12; background: #e2e8f0; 
-  }
-
 #elementsList {
-  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)) !important;
+  grid-template-columns: repeat(auto-fit, minmax(55px, 1fr)) !important;
   gap: 0 !important;
 }
 .element-card {
@@ -103,7 +90,7 @@
 <div class="container">
   <div class="header">
     <h1>XRF Sample Processor</h1>
-    <p>Advanced X-ray Fluorescence Data Analysis Tool - GeoExploration Only</p>
+    <p>Advanced X-ray Fluorescence Data Analysis Tool</p>
   </div>
 
   <div class="tabs">
@@ -140,7 +127,7 @@
       </div>
     </div>
 
-    <div id="output"><p style="padding:20px; color:#64748b;">📊 No data loaded. This tool processes GeoExploration samples only.</p></div>
+    <div id="output"><p style="padding:20px; color:#64748b;">📊 No data loaded.</p></div>
   </div>
 
   <div id="analysis-tools" class="tab-content">
@@ -199,12 +186,9 @@ document.querySelectorAll('.tab').forEach(tab => {
     this.classList.add('active');
     document.getElementById(this.dataset.tab).classList.add('active');
     
-    // Only populate elements list if it's empty
+    // Populate elements list when Analysis Tools tab is clicked
     if (this.dataset.tab === 'analysis-tools') {
-      const elementsList = document.getElementById('elementsList');
-      if (elementsList.children.length === 0) {
-        populateElementsList();
-      }
+      populateElementsList();
     }
   });
 });
@@ -226,31 +210,26 @@ document.querySelectorAll('input[name="chartMode"]').forEach(radio => {
 let selectedElements = new Set();
 
 function populateElementsList() {
-  const targetElements = ['Ag','As','Au','Ba','Bi','Ca','Cd','Ce','Cl','Co','Cr','Cu',
-                          'Fe','Ga','Hf','Hg','La','Mn','Mo','Ni','Nb','P','Pb','Pd',
-                          'Pt','Rb','Rh','S','Sb','Se','Sn','Sr','Ta','Te','Th','Ti',
-                          'Tl','U','V','W','Y','Zn','Zr','Al2O3','K2O','MgO','SiO2'];
+  const targetElements = ['As', 'Au', 'Ba', 'Bi', 'Ca', 'Cd', 'Ce', 'Co', 'Cr', 'Cu', 
+                         'Fe', 'Ga', 'Hf', 'Hg', 'La', 'Mn', 'Mo', 'Nb', 'Pb', 'Pd', 
+                         'Pt', 'Rb', 'Sb', 'Se', 'Sn', 'Sr', 'Ta', 'Te', 'Th', 'Ti', 
+                         'Tl', 'U', 'V', 'W', 'Y', 'Zn', 'Zr'];
   
   const elementsList = document.getElementById('elementsList');
-  if (!elementsList) return;
+  if (!elementsList) return; // Exit if elements list doesn't exist
   
-  elementsList.innerHTML = ''; // rebuilds cards, but don’t clear selectedElements set
-
+  elementsList.innerHTML = '';
+  selectedElements.clear();
+  
   targetElements.forEach(element => {
     const elementCard = document.createElement('div');
     elementCard.className = 'element-card';
     elementCard.textContent = element;
     elementCard.dataset.element = element;
     elementCard.onclick = () => toggleElementSelection(element, elementCard);
-    
-    // 🔑 Restore visual selection if it was already selected
-    if (selectedElements.has(element)) {
-      elementCard.classList.add('selected');
-    }
-    
     elementsList.appendChild(elementCard);
   });
-
+  
   updateSelectedCount();
 }
 
@@ -348,64 +327,64 @@ function pad2(n){ return String(n).padStart(2,'0'); }
 
 function normalizeDatePart(dateStr) {
   if (!dateStr) return null;
-  const pad2 = n => String(n).padStart(2, '0');
-
-  // normalize whitespace so patterns are easier to match
-  let s = String(dateStr).trim();
-  // collapse multiple spaces into one (keeps strings with no spaces intact)
-  s = s.replace(/\s+/g, ' ');
-
-  // --- Try year-first: YYYY-MM-DD or YYYY/MM/DD with optional time ---
-  let m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?\s*(AM|PM)?)?$/i);
-  if (m) {
-    const yyyy = m[1], mm = pad2(m[2]), dd = pad2(m[3]);
-    let hour = m[4] ? parseInt(m[4], 10) : 0;
-    const minute = m[5] ? pad2(m[5]) : '00';
-    const second = m[6] ? pad2(m[6]) : '00';
-    const ampm = m[7];
-
-    if (ampm) {
-      if (ampm.toUpperCase() === 'PM' && hour < 12) hour += 12;
-      if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
+  let s = dateStr.trim();
+  
+  console.log("Processing date string:", s);
+  
+  // Handle multiple formats where date and time are concatenated without space
+  let dateOnly = s;
+  
+  // Pattern 1: MM/DD/YYYY followed by time (e.g., "10/4/201912:39:22PM")
+  const slashTimeMatch = s.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\d{1,2}:\d{1,2}:\d{1,2}(AM|PM)?/i);
+  if (slashTimeMatch) {
+    dateOnly = slashTimeMatch[1];
+    console.log("Extracted slash format date:", dateOnly);
+  } 
+  // Pattern 2: MM-DD-YYYY followed by time (e.g., "10-21-201918:26")
+  else {
+    const dashTimeMatch = s.match(/^(\d{1,2}-\d{1,2}-\d{4})\d{1,2}:\d{1,2}/);
+    if (dashTimeMatch) {
+      dateOnly = dashTimeMatch[1];
+      console.log("Extracted dash format date:", dateOnly);
     }
-
-    const display = `${mm}-${dd}-${yyyy}`;
-    const iso = `${yyyy}-${mm}-${dd}`;
-    const dateObj = new Date(Number(yyyy), Number(mm) - 1, Number(dd), hour, Number(minute), Number(second));
-    return { display, iso, dateObj };
-  }
-
-  // --- Try month-first: MM/DD/YYYY or MM-DD-YYYY with optional time ---
-  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?\s*(AM|PM)?)?$/i);
-  if (m) {
-    const mm = pad2(m[1]), dd = pad2(m[2]), yyyy = m[3];
-    let hour = m[4] ? parseInt(m[4], 10) : 0;
-    const minute = m[5] ? pad2(m[5]) : '00';
-    const second = m[6] ? pad2(m[6]) : '00';
-    const ampm = m[7];
-
-    if (ampm) {
-      if (ampm.toUpperCase() === 'PM' && hour < 12) hour += 12;
-      if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
+    // Pattern 3: Normal case with space separator
+    else if (s.includes(' ')) {
+      dateOnly = s.split(/\s+/)[0];
+      console.log("Extracted space-separated date:", dateOnly);
     }
-
-    const display = `${mm}-${dd}-${yyyy}`;
-    const iso = `${yyyy}-${mm}-${dd}`;
-    const dateObj = new Date(Number(yyyy), Number(mm) - 1, Number(dd), hour, Number(minute), Number(second));
-    return { display, iso, dateObj };
   }
-
-  // --- Fallback: try native Date parsing ---
-  const d = new Date(s);
-  if (!isNaN(d)) {
-    const mm = pad2(d.getMonth() + 1);
-    const dd = pad2(d.getDate());
-    const yyyy = d.getFullYear();
-    return { display: `${mm}-${dd}-${yyyy}`, iso: `${yyyy}-${mm}-${dd}`, dateObj: new Date(yyyy, d.getMonth(), d.getDate()) };
+  
+  console.log("Final date string to parse:", dateOnly);
+  
+  const parts = dateOnly.split(/[-\/]/).map(p => p.trim());
+  if (parts.length !== 3) {
+    console.log("Invalid date parts:", parts);
+    const d = new Date(dateOnly);
+    if (isNaN(d)) return null;
+    const mm = pad2(d.getMonth()+1), dd = pad2(d.getDate()), yyyy = d.getFullYear();
+    return { display: `${mm}-${dd}-${yyyy}`, iso: `${yyyy}-${mm}-${dd}`, dateObj: new Date(yyyy, mm-1, dd) };
   }
-
-  // If nothing matched, return null so caller knows it's unusable
-  return null;
+  
+  let mm, dd, yyyy;
+  if (parts[0].length === 4) { 
+    // Format: YYYY/MM/DD or YYYY-MM-DD
+    yyyy = parts[0]; mm = parts[1]; dd = parts[2]; 
+  } else if (parts[2].length === 4) { 
+    // Format: MM/DD/YYYY or MM-DD-YYYY
+    mm = parts[0]; dd = parts[1]; yyyy = parts[2]; 
+  } else {
+    // Try parsing as a date
+    console.log("Falling back to Date parsing for:", dateOnly);
+    const d = new Date(dateOnly);
+    if (isNaN(d)) return null;
+    mm = pad2(d.getMonth()+1); dd = pad2(d.getDate()); yyyy = d.getFullYear();
+    return { display: `${mm}-${dd}-${yyyy}`, iso: `${yyyy}-${mm}-${dd}`, dateObj: new Date(yyyy, mm-1, dd) };
+  }
+  
+  mm = pad2(Number(mm)); dd = pad2(Number(dd)); yyyy = String(yyyy);
+  const result = { display: `${mm}-${dd}-${yyyy}`, iso: `${yyyy}-${mm}-${dd}`, dateObj: new Date(Number(yyyy), Number(mm)-1, Number(dd)) };
+  console.log("Date normalization result:", result);
+  return result;
 }
 
 // --- Parsing ---
@@ -425,96 +404,45 @@ function parseBlocksFromCSV(text) {
         while (row.length < header.length) row.push("");
         const rowObj = {};
         header.forEach((h, idx) => { rowObj[h] = row[idx] || ""; });
-        
-        // Filter: Only include GeoExploration data, exclude GeoMining
-        const application = rowObj["Application"] || "";
-        if (application.trim().toLowerCase() === "geoexploration") {
-          rowObj["__BlockID"] = blockId;
-          blocks.push(rowObj);
-          blockId++;
-        }
+        rowObj["__BlockID"] = blockId;
+        blocks.push(rowObj);
+        blockId++;
       }
       i++;
     }
   }
   return blocks;
 }
-
 function reorderColumns(blocks) {
   if (!blocks.length) return { rows: [], headers: [] };
-
-  // --- Find widest block ---
-  let widestBlock = blocks[0];
-  for (const row of blocks) {
-    if (Object.keys(row).length > Object.keys(widestBlock).length) {
-      widestBlock = row;
-    }
-  }
-
-  const allHeaders = Object.keys(widestBlock);
-
-  // --- Meta and trailing ---
-  const metaList = [
-    "File#", "DateTime", "Operator", "Name", "ID", "Field1", "Field2",
-    "Application", "Method", "ElapsedTime",
-    "Alloy1", "Alloy2", "Alloy3"
-  ];
-  const matchQualList = ["MatchQual1", "MatchQual2", "MatchQual3"];
-  const trailingList = ["CalCheck", "__BlockID", "Units"];
-
-  const metaCols = metaList.filter(h => allHeaders.includes(h));
-  const matchQualCols = matchQualList.filter(h => allHeaders.includes(h));
-  const trailingCols = trailingList.filter(h => allHeaders.includes(h));
-
-  // Everything else
-  const candidates = allHeaders.filter(
-    h => !metaCols.includes(h) && !matchQualCols.includes(h) && !trailingCols.includes(h)
-  );
-
-  // --- Known oxide patterns (case-insensitive) ---
-  const oxidePattern = /^(SiO2|Al2O3|Fe2O3|MgO|CaO|Na2O|K2O|TiO2|MnO|P2O5|Mo)$/i;
-
-  // Split oxides vs elements
-  const oxideCols = candidates.filter(h => oxidePattern.test(h.replace("Err", "")));
-  const elementCols = candidates.filter(h => !oxideCols.includes(h));
-
-  // --- Pair helper (base always before Err) ---
-  function pairColumns(cols) {
-    const bases = cols.filter(c => !c.endsWith("Err"));
-    const ordered = [];
-
-    bases.sort((a, b) => a.localeCompare(b)).forEach(base => {
-      ordered.push(base);
-      const errCol = base + "Err";
-      if (cols.includes(errCol)) {
-        ordered.push(errCol);
+  const allHeaders = Object.keys(blocks[0]);
+  const metaEnd = allHeaders.indexOf("MatchQual3");
+  const metaCols = metaEnd >= 0 ? allHeaders.slice(0, metaEnd + 1) : [];
+  const trailing = ["CalCheck","__BlockID"].filter(c => allHeaders.includes(c));
+  const elementCandidates = allHeaders.filter(c => !metaCols.includes(c) && !trailing.includes(c) && c !== "IncludedInAverage");
+  const pairs = [];
+  const used = new Set();
+  elementCandidates.forEach(col => {
+    if (col.endsWith("Err")) {
+      const base = col.slice(0,-3);
+      if (elementCandidates.includes(base)) {
+        pairs.push([base,col]);
+        used.add(base); used.add(col);
       }
-    });
-
-    // catch stray Errs (if base missing)
-    cols.filter(c => c.endsWith("Err") && !ordered.includes(c))
-        .sort((a, b) => a.localeCompare(b))
-        .forEach(err => ordered.push(err));
-
-    return ordered;
-  }
-
-  const elementOrdered = pairColumns(elementCols);
-  const oxideOrdered = pairColumns(oxideCols); // at the end
-
-  // --- Final order ---
-  const newOrder = metaCols.concat(matchQualCols, elementOrdered, oxideOrdered, trailingCols);
-
-  // Rebuild rows
+    }
+  });
+  const leftovers = elementCandidates.filter(c => !used.has(c));
+  pairs.sort((a,b)=>a[0].localeCompare(b[0]));
+  const elementSorted = pairs.flat().concat(leftovers.sort());
+  elementCols = elementSorted;
+  const newOrder = metaCols.concat(elementSorted, trailing);
   const reorderedRows = blocks.map(row => {
     const newRow = {};
-    newOrder.forEach(h => { newRow[h] = row[h] !== undefined ? row[h] : ""; });
+    newOrder.forEach(h => newRow[h] = row[h] || "");
     return newRow;
   });
-
   return { rows: reorderedRows, headers: newOrder };
 }
-
 
 // --- File input ---
 document.getElementById("csvFile").addEventListener("change", function() {
@@ -526,17 +454,6 @@ document.getElementById("csvFile").addEventListener("change", function() {
   reader.onload = function(e) {
     const text = e.target.result;
     const blocks = parseBlocksFromCSV(text);
-    
-    // Check if any GeoExploration data was found
-    if (blocks.length === 0) {
-      document.getElementById("output").innerHTML = 
-        "<div style='padding:20px; color:#dc2626; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; margin:20px 0;'>" +
-        "⚠️ No GeoExploration data found in this file. Only GeoExploration samples are processed by this tool. " +
-        "GeoMining data is automatically filtered out.</div>";
-      document.getElementById("downloadBtn").disabled = true;
-      return;
-    }
-    
     const {rows, headers} = reorderColumns(blocks);
     allSamples = rows;
     originalHeaders = headers;
@@ -545,15 +462,6 @@ document.getElementById("csvFile").addEventListener("change", function() {
     renderTable(displayedRows);
     document.getElementById("downloadBtn").disabled = false;
     updateGenerateButton();
-    
-    // Show info about filtered data
-    const totalGeoExploration = blocks.length;
-    document.getElementById("output").insertAdjacentHTML('afterbegin', 
-      `<div style='padding:15px; color:#059669; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; margin-bottom:20px;'>
-        ✅ Loaded ${totalGeoExploration} GeoExploration sample${totalGeoExploration !== 1 ? 's' : ''} 
-        (GeoMining data automatically filtered out)
-      </div>`
-    );
   };
   reader.readAsText(file,"UTF-8");
 });
@@ -563,8 +471,9 @@ function populateDateDropdowns(rows) {
   const isoToDisplay = new Map();
   rows.forEach(row => {
     const dt = row["DateTime"] ? String(row["DateTime"]).trim() : "";
-	if (!dt) return;
-	const norm = normalizeDatePart(dt);
+    if (!dt) return;
+    const datePart = dt.split(" ")[0].trim();
+    const norm = normalizeDatePart(datePart);
     if (norm && norm.iso) isoToDisplay.set(norm.iso, norm.display);
   });
 
@@ -633,7 +542,8 @@ function filterByDateRange() {
   displayedRows = allSamples.filter(row => {
     const dt = row[dateColumn] ? String(row[dateColumn]).trim() : "";
     if (!dt) return false;
-    const norm = normalizeDatePart(dt);
+    const dateOnly = dt.split(" ")[0].trim();
+    const norm = normalizeDatePart(dateOnly);
     if (!norm || !norm.iso) return false;
     const rowDate = new Date(norm.iso + "T12:00:00");
     if (startDate && rowDate < startDate) return false;
@@ -769,21 +679,16 @@ function generateAveragesChart(ctx, selectedElementsArray, scale, units) {
   displayedRows.forEach(row => {
     selectedElementsArray.forEach(element => {
       let val = row[element] || "";
-
-      // Convert <LOD values to 0
-      if (val === "<LOD" || val === "< LOD") {
-        val = "0";
-      }
-
-      // Skip empty or non-numeric values
-      if (val === "" || isNaN(val)) return;
-
+      
+      // Skip <LOD values and empty values
+      if (val === "<LOD" || val === "< LOD" || val === "" || isNaN(val)) return;
+      
       const numVal = parseFloat(val);
       if (!isNaN(numVal)) {
         // Apply scaling if enabled (same logic as in renderTable)
         const scaledVal = scale ? numVal * 10000 : numVal;
         averages[element] += scaledVal;
-        validCounts[element]++; // count every sample, including <LOD as 0
+        validCounts[element]++;
       }
     });
   });
@@ -862,7 +767,6 @@ function generateAveragesChart(ctx, selectedElementsArray, scale, units) {
     }
   });
 }
-
 
 function generateIndividualChart(ctx, selectedElementsArray, scale, units) {
   // For individual mode, we should only have one element
