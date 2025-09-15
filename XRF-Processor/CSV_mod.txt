@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>XRF CSV Processor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh; padding: 20px;
+        }
+        .container {
+            max-width: 1200px; margin: 0 auto;
+            background: rgba(255,255,255,0.95); border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white; padding: 30px; text-align: center;
+        }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .header p { font-size: 1.1rem; opacity: 0.9; }
+        .content { padding: 40px; }
+        .upload-section {
+            background: #f8f9ff; border-radius: 15px; padding: 30px; margin-bottom: 30px;
+            border: 2px dashed #4facfe; text-align: center; transition: all 0.3s ease;
+        }
+        .upload-section:hover { border-color: #00f2fe; background: #f0f4ff; }
+        .file-input-wrapper { position: relative; display: inline-block; margin-bottom: 20px; }
+        .file-input { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+        .file-input-button {
+            display: inline-block; padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border-radius: 50px; font-size: 1.1rem; cursor: pointer; border: none;
+        }
+        .file-input-button:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(102,126,234,0.3); }
+        .date-input-section { background: white; padding: 25px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.08); }
+        .date-input-section h3 { margin-bottom: 20px; color: #333; text-align: center; }
+        .date-inputs-wrapper { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .date-inputs-wrapper { grid-template-columns: 1fr; } }
+        .date-input-group { display: flex; flex-direction: column; }
+        .date-input-section label { display:block; margin-bottom:10px; font-weight:600; color:#333; }
+        .date-input { width:100%; padding:12px 15px; border:2px solid #e1e5e9; border-radius:10px; font-size:1rem; }
+        .date-input:focus { outline:none; border-color:#4facfe; }
+        .process-button {
+            width:100%; padding:15px; background: linear-gradient(135deg,#4facfe 0%,#00f2fe 100%);
+            color:white; border:none; border-radius:10px; font-size:1.1rem; font-weight:600; cursor:pointer; margin-bottom:20px;
+        }
+        .process-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(79,172,254,0.3); }
+        .process-button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .status { padding:15px; border-radius:10px; margin-bottom:20px; font-weight:500; }
+        .status.success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+        .status.error { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+        .status.info { background:#d1ecf1; color:#0c5460; border:1px solid #bee5eb; }
+        .results-table { width:100%; border-collapse:collapse; margin-top:20px; background:white; border-radius:10px; overflow:hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .results-table th { background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:white; padding:15px 10px; text-align:left; font-weight:600; }
+        .results-table td { padding:12px 10px; border-bottom:1px solid #f0f0f0; }
+        .results-table tr:hover { background:#f8f9ff; }
+        .download-section { text-align:center; margin-top:30px; }
+        .download-button { padding:15px 30px; background: linear-gradient(135deg,#11998e 0%,#38ef7d 100%); color:white; border:none; border-radius:50px; font-size:1.1rem; font-weight:600; cursor:pointer; }
+        .download-button:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(17,153,142,0.3); }
+        .hidden { display:none; }
+        .loading { text-align:center; padding:20px; }
+        .spinner { border:4px solid #f3f3f3; border-top:4px solid #4facfe; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto 10px; }
+        @keyframes spin { 0%{ transform: rotate(0deg)} 100%{ transform: rotate(360deg)} }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>XRF CSV Processor</h1>
+            <p>Upload your XRF Results CSV file and process samples by date range</p>
+        </div>
+
+        <div class="content">
+            <div class="upload-section">
+                <div class="file-input-wrapper">
+                    <input type="file" id="csvFile" class="file-input" accept=".csv" />
+                    <button class="file-input-button" id="chooseBtn">Choose CSV File</button>
+                </div>
+                <p>Select your XRF Results CSV file to process</p>
+                <div id="fileName" class="hidden" style="margin-top: 10px; font-weight: bold; color: #4facfe;"></div>
+            </div>
+
+            <div class="date-input-section">
+                <h3>Select Date Range</h3>
+                <div class="date-inputs-wrapper">
+                    <div class="date-input-group">
+                        <label for="startDate">Start Date:</label>
+                        <input type="date" id="startDate" class="date-input" />
+                    </div>
+                    <div class="date-input-group">
+                        <label for="endDate">End Date:</label>
+                        <input type="date" id="endDate" class="date-input" />
+                    </div>
+                </div>
+            </div>
+
+            <button id="processBtn" class="process-button" disabled>Process CSV</button>
+
+            <div id="status" class="hidden"></div>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Processing your data...</p>
+            </div>
+
+            <div id="results" class="hidden">
+                <h3 style="margin-bottom: 20px; color: #333;">Processed Results</h3>
+                <div style="overflow-x: auto;">
+                    <table id="resultsTable" class="results-table"></table>
+                </div>
+
+                <div class="download-section">
+                    <button id="downloadBtn" class="download-button">Download Excel File</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+/* -----------------------
+   Utility & UI helpers
+   ----------------------- */
+let processedData = null;
+let finalColumns = [];
+
+function showStatus(message, type = 'info') {
+    const status = document.getElementById('status');
+    status.className = `status ${type}`;
+    status.textContent = message;
+    status.classList.remove('hidden');
+}
+function hideStatus() {
+    document.getElementById('status').classList.add('hidden');
+}
+function isLikelyHeaderCell(cell) {
+    if (!cell && cell !== 0) return false;
+    return String(cell).trim().length > 0 && /[A-Za-z]/.test(cell);
+}
+
+/* -----------------------
+   Robust header detection
+   ----------------------- */
+function isHeaderRow(row) {
+    // row is an array of cells
+    if (!row || !row.length) return false;
+    // look for key header labels (case-insensitive) commonly present in XRF exports
+    const headerCandidates = ['file #', 'file', 'datetime', 'date', 'operator', 'name', 'id'];
+    const countMatches = row.reduce((acc, c) => {
+        if (!c) return acc;
+        const s = String(c).trim().toLowerCase();
+        for (const h of headerCandidates) {
+            if (s.includes(h)) return acc + 1;
+        }
+        return acc;
+    }, 0);
+    // require at least 1 match, and at least several non-empty textual cells
+    const textCells = row.filter(c => isLikelyHeaderCell(c)).length;
+    return countMatches >= 1 && textCells >= Math.min(3, row.length);
+}
+
+/* -----------------------
+   Date parsing helpers
+   ----------------------- */
+function parseDate(dateStr) {
+    if (!dateStr) return null;
+    const s = String(dateStr).trim();
+    // handle common formats
+    // 1) M/D/YYYY or MM/DD/YYYY or with time
+    const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(.*)$/);
+    if (slash) {
+        const month = parseInt(slash[1], 10);
+        const day = parseInt(slash[2], 10);
+        const year = parseInt(slash[3], 10);
+        return new Date(year, month - 1, day);
+    }
+    // 2) ISO-like first 10 chars (YYYY-MM-DD)
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return new Date(`${iso[1]}-${iso[2]}-${iso[3]}`);
+    // 3) Try Date parse fallback
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+    return null;
+}
+function formatDate(date) {
+    if (!date) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+function isDateInRange(sampleDate, startDate, endDate) {
+    if (!sampleDate || !startDate || !endDate) return false;
+    const sd = new Date(sampleDate.getFullYear(), sampleDate.getMonth(), sampleDate.getDate());
+    const s = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    const e = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+    return sd >= s && sd <= e;
+}
+
+/* -----------------------
+   CSV reading with encoding detection
+   ----------------------- */
+function readFileAsTextWithEncoding(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            const ab = evt.target.result;
+            // check for null bytes -> likely UTF-16LE/BE
+            const view = new Uint8Array(ab);
+            let nullCount = 0;
+            for (let i=0; i < Math.min(view.length, 2000); i += 1) {
+                if (view[i] === 0) nullCount++;
+            }
+            try {
+                if (nullCount > (Math.min(view.length, 2000) * 0.2)) {
+                    // likely UTF-16 (many null bytes), assume little-endian first
+                    try {
+                        const decoderLE = new TextDecoder('utf-16le');
+                        const text = decoderLE.decode(ab);
+                        resolve(text);
+                        return;
+                    } catch (e) { /* fallback */ }
+                    try {
+                        const decoderBE = new TextDecoder('utf-16be');
+                        const text = decoderBE.decode(ab);
+                        resolve(text);
+                        return;
+                    } catch (e) { /* fallback */ }
+                }
+                // default to utf-8
+                const decoder = new TextDecoder('utf-8');
+                const text = decoder.decode(ab);
+                resolve(text);
+            } catch (err) {
+                reject(err);
+            }
+        };
+        reader.onerror = (e) => reject(e);
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+/* -----------------------
+   Preprocess text -> normalize lines & remove stray unicode NULLs
+   ----------------------- */
+function normalizeCsvText(rawText) {
+    if (!rawText) return '';
+    // Remove NUL characters that appear when decoding weird encodings
+    let t = rawText.replace(/\u0000/g, '');
+    // Normalize CRLF/LF/CR
+    t = t.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    return t;
+}
+
+/* -----------------------
+   Main processing
+   ----------------------- */
+document.getElementById('csvFile').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        document.getElementById('fileName').textContent = `Selected: ${file.name}`;
+        document.getElementById('fileName').classList.remove('hidden');
+        updateProcessButton();
+    }
+});
+document.getElementById('startDate').addEventListener('change', updateProcessButton);
+document.getElementById('endDate').addEventListener('change', updateProcessButton);
+
+function updateProcessButton() {
+    const file = document.getElementById('csvFile').files[0];
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const processBtn = document.getElementById('processBtn');
+    if (file && startDate && endDate) {
+        if (new Date(startDate) <= new Date(endDate)) processBtn.disabled = false;
+        else processBtn.disabled = true;
+    } else processBtn.disabled = true;
+}
+
+document.getElementById('processBtn').addEventListener('click', async function() {
+    const file = document.getElementById('csvFile').files[0];
+    const startDateStr = document.getElementById('startDate').value;
+    const endDateStr = document.getElementById('endDate').value;
+    if (!file || !startDateStr || !endDateStr) {
+        showStatus('Please select a file and date range', 'error');
+        return;
+    }
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+    if (startDate > endDate) {
+        showStatus('Start date must be before or equal to end date', 'error');
+        return;
+    }
+    hideStatus();
+    document.getElementById('loading').classList.remove('hidden');
+    document.getElementById('results').classList.add('hidden');
+
+    try {
+        const rawText = await readFileAsTextWithEncoding(file);
+        const text = normalizeCsvText(rawText);
+
+        // Use PapaParse on the full text; skipEmptyLines to remove purely empty lines
+        const parsed = Papa.parse(text, { skipEmptyLines: true, delimiter: ',', dynamicTyping: false });
+        const rows = parsed.data.map(r => r.map(c => (c === undefined || c === null) ? '' : String(c)));
+
+        // We'll scan rows to find header rows and the following data rows.
+        let headerRow = null;
+        const samples = [];
+
+        // Helper to test whether a row looks like a data row (numbers, <LOD, dates)
+        function rowLooksLikeData(r) {
+            let numericish = 0;
+            let count = 0;
+            for (let i = 0; i < r.length; i++) {
+                const cell = String(r[i]).trim();
+                if (!cell) continue;
+                count++;
+                // consider <LOD as data marker
+                if (cell.toUpperCase().startsWith('<LOD')) numericish++;
+                // numeric (allow percent sign, parentheses, commas)
+                const stripped = cell.replace(/[%(),]/g, '').replace(/\s/g, '');
+                if (/^-?\d*\.?\d+(e[-+]?\d+)?$/i.test(stripped)) numericish++;
+            }
+            // if many numeric-like cells or at least a couple, it's probably a data row
+            return numericish >= Math.min(2, Math.max(1, Math.floor(count / 3)));
+        }
+
+        // Iterate rows - tolerant to repeated header blocks
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            // skip empty row
+            if (!row.some(c => String(c).trim())) continue;
+
+            if (!headerRow) {
+                if (isHeaderRow(row)) {
+                    headerRow = row.map(h => String(h).trim());
+                    // continue to next row to find the data row(s)
+                    continue;
+                } else {
+                    // skip metadata lines before header
+                    continue;
+                }
+            } else {
+                // If we encounter another header-like row, treat it as a header update (some files repeat header)
+                if (isHeaderRow(row)) {
+                    headerRow = row.map(h => String(h).trim());
+                    continue;
+                }
+                // If this row looks like data, map it to header
+                if (rowLooksLikeData(row)) {
+                    const sample = {};
+                    const limit = Math.min(headerRow.length, row.length);
+                    for (let j = 0; j < limit; j++) {
+                        const header = headerRow[j] ? headerRow[j].trim() : `Col${j+1}`;
+                        let value = String(row[j]).trim();
+                        if (value === '<LOD' || value.toUpperCase().startsWith('<LOD')) {
+                            sample[header] = null;
+                        } else {
+                            // Try parse numeric; otherwise keep raw string
+                            const maybeNum = Number(value.replace(/[,]/g, ''));
+                            sample[header] = (value !== '' && !isNaN(maybeNum)) ? maybeNum : value;
+                        }
+                    }
+                    // Keep any extra columns beyond header as "Extra_x"
+                    if (row.length > headerRow.length) {
+                        for (let j = headerRow.length; j < row.length; j++) {
+                            sample[`Extra_${j - headerRow.length + 1}`] = String(row[j]).trim();
+                        }
+                    }
+                    // Filter by date range using common date columns
+                    const dtCandidates = ['DateTime','Date Time','Date','datetime','date','DateTime ', 'Date Time '];
+                    let dtVal = null;
+                    for (const c of dtCandidates) {
+                        if (c in sample && sample[c]) { dtVal = sample[c]; break; }
+                    }
+                    // also try common header names trimmed lower
+                    if (!dtVal) {
+                        const k = Object.keys(sample).find(k => k && k.toLowerCase().includes('date'));
+                        if (k) dtVal = sample[k];
+                    }
+                    const sampleDate = parseDate(dtVal ? String(dtVal) : '');
+                    if (sampleDate && isDateInRange(sampleDate, startDate, endDate)) {
+                        // attach a standardized Date field for output convenience
+                        sample.__sampleDate = sampleDate;
+                        samples.push(sample);
+                    }
+                    // continue scanning - do not skip next row specifically because some exports have one data row per header or multiple rows per header
+                } else {
+                    // row doesn't look like data; maybe stray metadata between header and data -- skip
+                    continue;
+                }
+            }
+        } // end rows loop
+
+        if (samples.length === 0) {
+            document.getElementById('loading').classList.add('hidden');
+            showStatus(`No samples found for date range: ${formatDate(startDate)} to ${formatDate(endDate)}`, 'error');
+            return;
+        }
+
+        // Determine metadata columns vs element columns.
+        // Strategy: find columns that end with "Err" (with or w/o space), and assume element columns are paired with Err columns.
+        const allHeaders = new Set();
+        samples.forEach(s => Object.keys(s).forEach(k => allHeaders.add(k)));
+        // Remove the synthetic __sampleDate
+        allHeaders.delete('__sampleDate');
+
+        const headerList = Array.from(allHeaders);
+
+        // find any columns that include 'Err' (case-insensitive) to locate element zone
+        const errCols = headerList.filter(h => /err$/i.test(h.trim()) || /\berr\b/i.test(h.trim()));
+        let firstErrIdx = -1;
+        if (errCols.length > 0) {
+            // find index in headerList of first err col by original order heuristic: try to preserve header order by scanning one sample
+            const sample0 = samples[0];
+            const orderedKeys = [];
+            // Attempt to preserve ordering by using keys from sample0 and then fallback to headerList
+            Object.keys(sample0).forEach(k => { if (k !== '__sampleDate') orderedKeys.push(k); });
+            for (const ec of errCols) {
+                const idx = orderedKeys.indexOf(ec);
+                if (idx !== -1) {
+                    if (firstErrIdx === -1 || idx < firstErrIdx) firstErrIdx = idx;
+                }
+            }
+        }
+
+        // Fallback: if we could not find an err column, try heuristic: find first element-looking column by pattern
+        if (firstErrIdx === -1) {
+            // choose first column that looks like an element (all caps or common element names) after metadata
+            // fallback to first column after a "DateTime" or "Operator"
+            const orderedTry = [];
+            Object.keys(samples[0]).forEach(k => { if (k !== '__sampleDate') orderedTry.push(k); });
+            let metaEnd = 0;
+            for (let i=0; i<orderedTry.length; i++) {
+                const key = orderedTry[i].toLowerCase();
+                if (key.includes('date') || key.includes('file') || key.includes('operator') || key.includes('name') || key.includes('id')) {
+                    metaEnd = i + 1;
+                }
+            }
+            firstErrIdx = metaEnd + 1;
+            if (firstErrIdx >= orderedTry.length) firstErrIdx = orderedTry.length - 1;
+        }
+
+        // Build metadataCols as keys up to firstElementIdx (guess)
+        const orderedKeysSample = Object.keys(samples[0]).filter(k => k !== '__sampleDate');
+        const firstElementIdx = Math.max(1, firstErrIdx - 1);
+        const metadataCols = orderedKeysSample.slice(0, firstElementIdx);
+
+        // Now transform each sample into flattened records with metadata then sorted elements
+        const sortedSamples = [];
+        const allElements = new Set();
+
+        for (const sample of samples) {
+            const orderedKeys = Object.keys(sample).filter(k => k !== '__sampleDate');
+            // element keys are those not in metadataCols
+            const elementKeys = orderedKeys.filter(k => !metadataCols.includes(k));
+            // create elements map pairing value and err if present
+            const elements = {};
+            for (let i = 0; i < elementKeys.length; i++) {
+                const key = elementKeys[i];
+                // find an Err variant (key + ' Err' or key + 'Err' or 'Err ' + key)
+                const errVariants = [`${key} Err`, `${key}Err`, `${key} Err `, `${key} Err`];
+                let errVal = null;
+                for (const ev of errVariants) {
+                    if (ev in sample) { errVal = sample[ev]; break; }
+                }
+                // also try nearby key with 'Err' suffix in orderedKeys (tolerant)
+                if (errVal === null) {
+                    const nearby = orderedKeys.find(k2 => k2.toLowerCase() === `${key.toLowerCase()} err` || k2.toLowerCase() === `${key.toLowerCase()}err`);
+                    if (nearby) errVal = sample[nearby];
+                }
+                elements[key] = { Val: (key in sample) ? sample[key] : null, Err: errVal !== undefined ? errVal : null };
+                allElements.add(key);
+            }
+
+            const flat = {};
+            // metadata first (only include those actually present)
+            for (const mk of metadataCols) {
+                if (mk in sample) flat[mk] = sample[mk];
+            }
+            // add elements sorted alphabetically
+            const sortedElementNames = Array.from(Object.keys(elements)).sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+            for (const en of sortedElementNames) {
+                flat[en] = elements[en].Val;
+                if (elements[en].Err !== null && elements[en].Err !== undefined && elements[en].Err !== '') {
+                    flat[`${en} Err`] = elements[en].Err;
+                }
+            }
+            // include standardized date column for user convenience
+            if (sample.__sampleDate) flat['SampleDate'] = formatDate(sample.__sampleDate);
+            sortedSamples.push(flat);
+        }
+
+        // Build finalColumns preserving metadata then elements+errs
+        const finalMetadataCols = metadataCols.filter(c => sortedSamples.some(s => c in s));
+        const sortedAllElements = Array.from(allElements).sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        finalColumns = [...finalMetadataCols];
+        for (const elemName of sortedAllElements) {
+            finalColumns.push(elemName);
+            const errCol = `${elemName} Err`;
+            if (sortedSamples.some(s => errCol in s)) finalColumns.push(errCol);
+        }
+        // ensure SampleDate (if exists) is visible near metadata
+        if (sortedSamples.some(s => 'SampleDate' in s) && !finalColumns.includes('SampleDate')) {
+            finalColumns.splice(finalMetadataCols.length, 0, 'SampleDate');
+        }
+
+        processedData = sortedSamples;
+        displayResults(sortedSamples, finalColumns);
+
+        document.getElementById('loading').classList.add('hidden');
+        showStatus(`Successfully processed ${sortedSamples.length} samples from ${formatDate(startDate)} to ${formatDate(endDate)}`, 'success');
+        document.getElementById('results').classList.remove('hidden');
+
+    } catch (err) {
+        document.getElementById('loading').classList.add('hidden');
+        showStatus(`Error processing file: ${err && err.message ? err.message : err}`, 'error');
+        console.error(err);
+    }
+});
+
+/* -----------------------
+   Table rendering + download
+   ----------------------- */
+function displayResults(data, columns) {
+    const table = document.getElementById('resultsTable');
+    table.innerHTML = '';
+
+    // header
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    columns.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col;
+        headerRow.appendChild(th);
+    });
+
+    // body
+    const tbody = table.createTBody();
+    data.forEach(sample => {
+        const row = tbody.insertRow();
+        columns.forEach(col => {
+            const cell = row.insertCell();
+            const value = (col in sample) ? sample[col] : '';
+            cell.textContent = (value === null) ? '<LOD' : (value === undefined ? '' : value);
+        });
+    });
+}
+
+document.getElementById('downloadBtn').addEventListener('click', function() {
+    if (!processedData || !finalColumns || finalColumns.length === 0) {
+        showStatus('No data to download', 'error');
+        return;
+    }
+    // use the finalColumns as header
+    const ws = XLSX.utils.json_to_sheet(processedData, { header: finalColumns });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Results");
+    const startDateStr = document.getElementById('startDate').value;
+    const endDateStr = document.getElementById('endDate').value;
+    const filename = `XRF_Results_${startDateStr}_to_${endDateStr}.xlsx`;
+    XLSX.writeFile(wb, filename);
+});
+</script>
+</body>
+</html>

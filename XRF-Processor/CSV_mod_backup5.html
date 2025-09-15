@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XRF Sample Processor</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  #top-container { display: flex; gap: 20px; }
+  #controls { flex: 1; max-width: 600px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+  th, td { border: 1px solid #ccc; padding: 5px; text-align: left; font-size: 12px; }
+  th { background-color: #f2f2f2; }
+  td { white-space: nowrap; }
+  input, select, button { margin: 5px 0; padding: 5px; }
+  #fileName { font-style: italic; margin-left: 10px; }
+  #csvFile { display: none; } /* hide native file input */
+</style>
+</head>
+<body>
+
+<h2>XRF Sample Processor</h2>
+
+<div id="top-container">
+  <div id="controls">
+    <label>Select CSV file:</label>
+    <button onclick="document.getElementById('csvFile').click()">Choose File</button>
+    <input type="file" id="csvFile" accept=".csv">
+    <span id="fileName"></span><br>
+
+    <input type="checkbox" id="scaleValues" checked>
+    <label for="scaleValues">Convert to ppm (×10000)</label><br>
+
+    <button onclick="downloadDisplayedRows()">Download Displayed Rows</button>
+  </div>
+</div>
+
+<div id="output"></div>
+
+<script>
+let allSamples = [];
+let displayedRows = [];
+let originalHeaders = [];
+let elementCols = []; // track which columns are true elements (scalable)
+
+// -------- Block parsing like Python --------
+function normalizeToken(tok) {
+  return tok ? tok.replace(/\x00/g, "").replace(/\s+/g, "").trim() : "";
+}
+
+function parseBlocksFromCSV(text) {
+  const lines = text.split(/\r?\n/);
+  const blocks = [];
+  let blockId = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const normLine = lines[i].replace(/\x00/g, "").replace(/\s+/g, "");
+    if (normLine.startsWith("File#")) {
+      if (i + 1 < lines.length) {
+        const header = lines[i].split(/,|\t/).map(normalizeToken);
+        const row = lines[i + 1].split(/,|\t/).map(normalizeToken);
+
+        while (row.length < header.length) row.push("");
+
+        const rowObj = {};
+        header.forEach((h, idx) => {
+          rowObj[h] = row[idx] || "";
+        });
+
+        rowObj["__BlockID"] = blockId;
+        blocks.push(rowObj);
+        blockId++;
+      }
+      i++; // skip the row we consumed
+    }
+  }
+  return blocks;
+}
+
+function reorderColumns(blocks) {
+  if (!blocks.length) return { rows: [], headers: [] };
+  const allHeaders = Object.keys(blocks[0]);
+
+  // meta_cols: everything up to MatchQual3
+  const metaEnd = allHeaders.indexOf("MatchQual3");
+  const metaCols = metaEnd >= 0 ? allHeaders.slice(0, metaEnd + 1) : [];
+
+  // trailing (no IncludedInAverage anymore)
+  const trailing = ["CalCheck", "__BlockID"].filter(c =>
+    allHeaders.includes(c)
+  );
+
+  // elements = everything else
+  const elementCandidates = allHeaders.filter(
+    c => !metaCols.includes(c) && !trailing.includes(c) && c !== "IncludedInAverage"
+  );
+
+  // Pair elements with Err
+  const pairs = [];
+  const used = new Set();
+  elementCandidates.forEach(col => {
+    if (col.endsWith("Err")) {
+      const base = col.slice(0, -3);
+      if (elementCandidates.includes(base)) {
+        pairs.push([base, col]);
+        used.add(base);
+        used.add(col);
+      }
+    }
+  });
+  const leftovers = elementCandidates.filter(c => !used.has(c));
+
+  // Sort alphabetically
+  pairs.sort((a, b) => a[0].localeCompare(b[0]));
+  const elementSorted = pairs.flat().concat(leftovers.sort());
+
+  elementCols = elementSorted; // keep track of elements for scaling
+
+  const newOrder = metaCols.concat(elementSorted, trailing);
+  const reorderedRows = blocks.map(row => {
+    const newRow = {};
+    newOrder.forEach(h => (newRow[h] = row[h] || ""));
+    return newRow;
+  });
+
+  return { rows: reorderedRows, headers: newOrder };
+}
+
+// -------- File handling --------
+document.getElementById("csvFile").addEventListener("change", function () {
+  const file = this.files[0];
+  if (file) {
+    document.getElementById("fileName").textContent = file.name; // show once
+  }
+  const reader = new FileReader();
+
+  reader.onload = function (e) {
+    const text = e.target.result;
+    const blocks = parseBlocksFromCSV(text);
+    const { rows, headers } = reorderColumns(blocks);
+
+    allSamples = rows;
+    originalHeaders = headers;
+    displayedRows = rows;
+
+    renderTable(displayedRows);
+  };
+
+  reader.readAsText(file, "UTF-8");
+});
+
+document.getElementById("scaleValues").addEventListener("change", function () {
+  if (displayedRows.length > 0) {
+    renderTable(displayedRows);
+  }
+});
+
+// -------- Table rendering --------
+function renderTable(rows) {
+  const outputDiv = document.getElementById("output");
+  outputDiv.innerHTML = "";
+
+  // Add "Units" column to display if ppm/raw
+  const headersToShow = [...originalHeaders, "Units"];
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const tbody = document.createElement("tbody");
+
+  // Header row
+  const headerRow = document.createElement("tr");
+  headersToShow.forEach(h => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+
+  const scale = document.getElementById("scaleValues").checked;
+  const units = scale ? "ppm" : "raw";
+
+  // Data rows
+  rows.forEach((row, idx) => {
+    const tr = document.createElement("tr");
+    headersToShow.forEach(h => {
+      let val = row[h] || "";
+      if (val === "<LOD" || val === "< LOD") {
+        // leave untouched
+      } else if (elementCols.includes(h) && !isNaN(val) && val !== "") {
+        if (scale) {
+          val = Math.round(parseFloat(val) * 10000);
+        } else {
+          val = parseFloat(val);
+        }
+      }
+      if (h === "__BlockID") val = idx;
+      if (h === "Units") val = units;
+      tr.appendChild(
+        Object.assign(document.createElement("td"), { textContent: val })
+      );
+    });
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  outputDiv.appendChild(table);
+}
+
+// -------- CSV download --------
+function downloadDisplayedRows() {
+  if (displayedRows.length === 0) return;
+
+  const scale = document.getElementById("scaleValues").checked;
+  const units = scale ? "ppm" : "raw";
+
+  // Add "Units" column in download
+  const headers = [...originalHeaders, "Units"];
+  let csvContent = headers.join(",") + "\n";
+
+  displayedRows.forEach((row, idx) => {
+    const rowData = headers.map(h => {
+      let val = row[h] || "";
+      if (val === "<LOD" || val === "< LOD") {
+        return val;
+      } else if (elementCols.includes(h) && !isNaN(val) && val !== "") {
+        if (scale) {
+          val = Math.round(parseFloat(val) * 10000);
+        } else {
+          val = parseFloat(val);
+        }
+      }
+      if (h === "__BlockID") val = idx;
+      if (h === "Units") val = units;
+      return val;
+    });
+    csvContent += rowData.join(",") + "\n";
+  });
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.setAttribute("download", "XRF_Processed.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+</script>
+
+</body>
+</html>

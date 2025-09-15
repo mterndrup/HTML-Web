@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XRF Sample Processor</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #top-container { display: flex; gap: 20px; }
+    #controls { flex: 1; max-width: 600px; }
+    #dateSelectors { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+    #elementCheckboxes { max-height: 130px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; margin-top: 10px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 5px; text-align: left; font-size: 12px; }
+    th { background-color: #f2f2f2; }
+    td { white-space: nowrap; }
+    input, select, button { margin: 5px 0; padding: 5px; }
+    #avgChartContainer { flex: 1; height: 80vh; }
+    #avgChart { width: 100%; height: 100%; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<h2>XRF Sample Processor</h2>
+
+<div id="top-container">
+  <div id="controls">
+    <label for="csvFile">Select CSV file:</label>
+    <input type="file" id="csvFile"><br>
+
+    <div id="dateSelectors">
+      <div>
+        <label for="startDateSelect">Start date:</label>
+        <select id="startDateSelect"><option value="">-- Load CSV --</option></select>
+      </div>
+      <div>
+        <label for="endDateSelect">End date:</label>
+        <select id="endDateSelect"><option value="">-- Load CSV --</option></select>
+      </div>
+      <button onclick="showRowsForRange()">Show Rows for Date Range</button>
+    </div>
+
+    <h3>Elements</h3>
+    <div id="elementCheckboxes"></div>
+    <button onclick="clearCheckboxes()">Clear Checkboxes</button>
+    <button onclick="showAndChartSelectedElements()">Show & Chart Selected Elements</button>
+    <button onclick="showAllRows()">Show All Rows</button>
+  </div>
+
+  <div id="avgChartContainer">
+    <canvas id="avgChart"></canvas>
+  </div>
+</div>
+
+<div id="output"></div>
+
+<script>
+let allSamples = [];
+let displayedRows = [];
+let originalHeaders = [];
+let chartInstance = null;
+const fixedColumns = ["File #","DateTime","Operator","Name","ID","Field1","Field2","Application","Method","ElapsedTime"];
+
+function cleanString(str) {
+  return str ? str.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim() : '';
+}
+
+document.getElementById('csvFile').addEventListener('change', function() {
+  const file = this.files[0];
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+    allSamples = [];
+
+    const headerLine = lines.find(line => line.includes('DateTime'));
+    if (!headerLine) { console.error("DateTime column not found!"); return; }
+
+    originalHeaders = headerLine.split(/\t|,/).map(h => cleanString(h));
+    const uniqueDates = new Set();
+
+    lines.forEach(line => {
+      const cells = line.split(/\t|,/).map(c => cleanString(c));
+      if (cells.length === 0) return;
+
+      const rowObj = {};
+      originalHeaders.forEach((h, i) => rowObj[h] = cells[i] !== undefined ? cells[i] : '');
+      allSamples.push(rowObj);
+
+      if (rowObj['DateTime']) {
+        const datePart = rowObj['DateTime'].split(' ')[0];
+        if (datePart) uniqueDates.add(datePart);
+      }
+    });
+
+    const startSelect = document.getElementById('startDateSelect');
+    const endSelect = document.getElementById('endDateSelect');
+    startSelect.innerHTML = '<option value="">-- Select start date --</option>';
+    endSelect.innerHTML = '<option value="">-- Select end date --</option>';
+
+    Array.from(uniqueDates).sort((a,b) => new Date(a) - new Date(b)).forEach(d => {
+      const opt1 = document.createElement('option'); opt1.value = d; opt1.textContent = d; startSelect.appendChild(opt1);
+      const opt2 = document.createElement('option'); opt2.value = d; opt2.textContent = d; endSelect.appendChild(opt2);
+    });
+
+    populateElementCheckboxes();
+  };
+
+  reader.readAsText(file, 'UTF-8'); // Ensure UTF-8 encoding is used
+});
+
+function populateElementCheckboxes() {
+  const container = document.getElementById('elementCheckboxes');
+  container.innerHTML = '';
+
+  const elementCols = originalHeaders
+    .filter(h => !fixedColumns.includes(h) && !h.includes('Err') && !h.startsWith('Alloy') && !h.startsWith('Match Qual') && h !== 'Cal Check')
+    .sort();
+
+  elementCols.forEach(el => {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = el; cb.id = `cb_${el}`;
+    const label = document.createElement('label'); label.htmlFor = `cb_${el}`; label.textContent = el;
+    const br = document.createElement('br');
+    container.appendChild(cb); container.appendChild(label); container.appendChild(br);
+  });
+}
+
+function clearCheckboxes() {
+  document.querySelectorAll('#elementCheckboxes input[type=checkbox]').forEach(cb => cb.checked = false);
+}
+
+function showRowsForRange() {
+  const startDateStr = document.getElementById('startDateSelect').value;
+  const endDateStr = document.getElementById('endDateSelect').value;
+  const outputDiv = document.getElementById('output');
+  outputDiv.innerHTML = '';
+
+  const startDate = startDateStr ? new Date(startDateStr) : null;
+  const endDate = endDateStr ? new Date(endDateStr) : null;
+
+  displayedRows = allSamples.filter(row => {
+    if (!row['DateTime']) return false;
+    const rowDate = new Date(row['DateTime'].split(' ')[0]);
+    return (!startDate || rowDate >= startDate) && (!endDate || rowDate <= endDate);
+  });
+
+  if (displayedRows.length === 0) {
+    outputDiv.innerHTML = '<p>No rows found for selected date range.</p>';
+    return;
+  }
+
+  renderTable(displayedRows, originalHeaders);
+}
+
+function renderTable(rows, headersToShow) {
+  const outputDiv = document.getElementById('output');
+  outputDiv.innerHTML = '';
+
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const tbody = document.createElement('tbody');
+
+  const headerRow = document.createElement('tr');
+  headersToShow.forEach(h => {
+    const th = document.createElement('th');
+    th.textContent = h;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    headersToShow.forEach(h => {
+      let val = row[h] || '';
+      if (!fixedColumns.includes(h) && val && val !== '< LOD') val = parseFloat(val) * 10000;
+      tr.appendChild(Object.assign(document.createElement('td'), { textContent: val }));
+    });
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  outputDiv.appendChild(table);
+}
+
+function showAndChartSelectedElements() {
+  const selectedElements = Array.from(document.querySelectorAll('#elementCheckboxes input[type=checkbox]'))
+    .filter(cb => cb.checked).map(cb => cb.value);
+
+  if (selectedElements.length === 0) {
+    alert('Select elements first.');
+    return;
+  }
+
+  renderTable(displayedRows, [...fixedColumns, ...selectedElements]);
+
+  const averages = {};
+  selectedElements.forEach(el => {
+    let sum = 0, count = 0;
+    displayedRows.forEach(row => {
+      let val = row[el];
+      if (val && val !== '< LOD') {
+        const num = parseFloat(val);
+        if (!isNaN(num)) {
+          sum += num * 10000;
+          count++;
+        }
+      }
+    });
+    averages[el] = count > 0 ? sum / count : 0;
+  });
+
+  const ctx = document.getElementById('avgChart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: Object.keys(averages),
+      datasets: [{
+        label: 'Average (ppm)',
+        data: Object.values(averages),
+        backgroundColor: 'rgba(54,162,235,0.7)'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: { beginAtZero: true }
+      }
+    }
+  });
+}
+
+function showAllRows() {
+  renderTable(displayedRows, originalHeaders);
+}
+</script>
+
+</body>
+</html>

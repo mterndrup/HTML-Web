@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XRF Data Processor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.2em;
+            font-weight: 300;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input[type="file"], input[type="date"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px dashed #ddd;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.8);
+            font-size: 16px;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        input[type="file"]:hover, input[type="date"]:hover {
+            border-color: #667eea;
+            background: rgba(255, 255, 255, 1);
+        }
+
+        input[type="file"]:focus, input[type="date"]:focus {
+            border-color: #667eea;
+            border-style: solid;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .process-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .process-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .process-btn:active {
+            transform: translateY(0);
+        }
+
+        .process-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            font-weight: 500;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+        }
+
+        .status.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .status.success {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .status.error {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .status.info {
+            background: rgba(33, 150, 243, 0.1);
+            color: #2196f3;
+            border: 1px solid rgba(33, 150, 243, 0.3);
+        }
+
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .file-info {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
+            font-size: 14px;
+            color: #667eea;
+            display: none;
+        }
+
+        .date-list {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            display: none;
+        }
+
+        .date-list h4 {
+            margin: 0 0 10px 0;
+            color: #667eea;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .date-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .date-btn {
+            padding: 8px 12px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            color: #555;
+        }
+
+        .date-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .date-btn.selected {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+                margin: 10px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .date-buttons {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>XRF Data Processor</h1>
+        
+        <div class="form-group">
+            <label for="csvFile">Upload CSV File</label>
+            <input type="file" id="csvFile" accept=".csv" required>
+            <div id="fileInfo" class="file-info"></div>
+            <div id="dateList" class="date-list">
+                <h4>Available Dates:</h4>
+                <div id="dateButtons" class="date-buttons"></div>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="targetDate">Target Date</label>
+            <input type="date" id="targetDate" required>
+        </div>
+        
+        <button id="processBtn" class="process-btn" onclick="processData()">
+            <span id="btnText">Process Data</span>
+            <div id="loadingSpinner" class="loading-spinner"></div>
+        </button>
+        
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        let csvData = null;
+        let availableDates = [];
+
+        // File upload handler
+        document.getElementById('csvFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    csvData = e.target.result;
+                    const fileInfo = document.getElementById('fileInfo');
+                    fileInfo.textContent = `File loaded: ${file.name} (${Math.round(file.size / 1024)} KB)`;
+                    fileInfo.style.display = 'block';
+                    
+                    // Extract and display available dates
+                    extractAvailableDates();
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        function extractAvailableDates() {
+            try {
+                const rows = parseCSV(csvData);
+                const dates = new Set();
+                let headerRow = [];
+                
+                let i = 0;
+                while (i < rows.length) {
+                    const row = rows[i];
+                    
+                    // Skip empty rows
+                    if (!row.some(cell => cell.trim())) {
+                        i++;
+                        continue;
+                    }
+                    
+                    if (isHeaderRow(row)) {
+                        headerRow = row.map(h => h.trim());
+                        
+                        if (i + 1 < rows.length && isDataRow(rows[i + 1])) {
+                            const valueRow = rows[i + 1];
+                            const sample = {};
+                            
+                            for (let j = 0; j < headerRow.length && j < valueRow.length; j++) {
+                                const header = headerRow[j];
+                                const value = valueRow[j].trim();
+                                
+                                if (header) {
+                                    sample[header] = value;
+                                }
+                            }
+                            
+                            // Extract date
+                            const dtVal = sample["DateTime"] || "";
+                            const sampleDateStr = String(dtVal).split(' ')[0];
+                            
+                            if (sampleDateStr) {
+                                const sampleDate = parseDate(sampleDateStr);
+                                if (sampleDate) {
+                                    dates.add(formatDate(sampleDate));
+                                }
+                            }
+                            
+                            i += 2;
+                        } else {
+                            i++;
+                        }
+                    } else {
+                        i++;
+                    }
+                }
+                
+                availableDates = Array.from(dates).sort();
+                displayAvailableDates();
+                
+            } catch (error) {
+                console.error('Error extracting dates:', error);
+                showStatus('Error reading CSV file: ' + error.message, 'error');
+            }
+        }
+
+        function displayAvailableDates() {
+            const dateList = document.getElementById('dateList');
+            const dateButtons = document.getElementById('dateButtons');
+            
+            if (availableDates.length === 0) {
+                dateList.style.display = 'none';
+                showStatus('No valid dates found in the CSV file', 'error');
+                return;
+            }
+            
+            dateButtons.innerHTML = '';
+            
+            availableDates.forEach(date => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'date-btn';
+                btn.textContent = date;
+                btn.onclick = () => selectDate(date);
+                dateButtons.appendChild(btn);
+            });
+            
+            dateList.style.display = 'block';
+            showStatus(`Found ${availableDates.length} unique date(s) in the file`, 'success');
+        }
+
+        function selectDate(date) {
+            // Update date input
+            document.getElementById('targetDate').value = date;
+            
+            // Update button styles
+            document.querySelectorAll('.date-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            event.target.classList.add('selected');
+            
+            showStatus(`Selected date: ${date}`, 'info');
+        }
+
+        // Set default date to today
+        document.getElementById('targetDate').valueAsDate = new Date();
+
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type} show`;
+            
+            setTimeout(() => {
+                if (type !== 'success' && type !== 'error') {
+                    statusEl.classList.remove('show');
+                }
+            }, 3000);
+        }
+
+        function setLoading(loading) {
+            const btn = document.getElementById('processBtn');
+            const btnText = document.getElementById('btnText');
+            const spinner = document.getElementById('loadingSpinner');
+            
+            if (loading) {
+                btn.disabled = true;
+                btnText.style.display = 'none';
+                spinner.style.display = 'block';
+            } else {
+                btn.disabled = false;
+                btnText.style.display = 'block';
+                spinner.style.display = 'none';
+            }
+        }
+
+        function parseCSV(csvText) {
+            const lines = csvText.split('\n');
+            const result = [];
+            
+            for (let line of lines) {
+                if (line.trim() === '') continue;
+                
+                const row = [];
+                let current = '';
+                let inQuotes = false;
+                
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if ((char === ',' || char === '\t') && !inQuotes) {
+                        row.push(current.trim());
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                row.push(current.trim());
+                
+                // Filter out completely empty rows
+                if (row.some(cell => cell.trim() !== '')) {
+                    result.push(row);
+                }
+            }
+            
+            return result;
+        }
+
+        function isHeaderRow(row) {
+            return row.some(cell => ['File #', 'DateTime', 'Operator'].some(h => cell.includes(h)));
+        }
+
+        function isDataRow(row) {
+            return row.some(cell => {
+                const trimmed = cell.trim();
+                if (trimmed === "< LOD" || trimmed === "<LOD") return true;
+                return !isNaN(parseFloat(trimmed));
+            });
+        }
+
+        function parseDate(dateStr) {
+            if (!dateStr || typeof dateStr !== 'string') {
+                return null;
+            }
+            
+            let cleanStr = dateStr.trim();
+            
+            // Extract just the date part if there's a time component
+            // Handle formats like "7/21/2025 11:26" or "7/21/2025"
+            if (cleanStr.includes(' ')) {
+                cleanStr = cleanStr.split(' ')[0];
+            }
+            
+            // Try common date formats
+            const patterns = [
+                // ISO format: YYYY-MM-DD
+                { regex: /^(\d{4})-(\d{2})-(\d{2})$/, format: 'ISO' },
+                // US format: M/D/YYYY or MM/DD/YYYY
+                { regex: /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, format: 'US' },
+                // European format: D/M/YYYY or DD/MM/YYYY  
+                { regex: /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, format: 'EU' },
+                // Alternative format: YYYY/MM/DD
+                { regex: /^(\d{4})\/(\d{2})\/(\d{2})$/, format: 'ISO_SLASH' },
+                // Dash format: M-D-YYYY or MM-DD-YYYY
+                { regex: /^(\d{1,2})-(\d{1,2})-(\d{4})$/, format: 'US_DASH' },
+                // European dash: D-M-YYYY or DD-MM-YYYY
+                { regex: /^(\d{1,2})-(\d{1,2})-(\d{4})$/, format: 'EU_DASH' }
+            ];
+            
+            // Try ISO format first (most reliable)
+            const isoMatch = cleanStr.match(patterns[0].regex);
+            if (isoMatch) {
+                const [, year, month, day] = isoMatch;
+                const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                if (!isNaN(date.getTime())) {
+                    return date;
+                }
+            }
+            
+            // Try US format: M/D/YYYY (assuming US format for your data)
+            const usMatch = cleanStr.match(patterns[1].regex);
+            if (usMatch) {
+                const [, month, day, year] = usMatch;
+                const monthNum = parseInt(month);
+                const dayNum = parseInt(day);
+                const yearNum = parseInt(year);
+                
+                // Validate month and day ranges
+                if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+                    const date = new Date(yearNum, monthNum - 1, dayNum);
+                    if (!isNaN(date.getTime())) {
+                        return date;
+                    }
+                }
+            }
+            
+            // Try YYYY/MM/DD format
+            const isoSlashMatch = cleanStr.match(patterns[3].regex);
+            if (isoSlashMatch) {
+                const [, year, month, day] = isoSlashMatch;
+                const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                if (!isNaN(date.getTime()) && parseInt(month) <= 12 && parseInt(day) <= 31) {
+                    return date;
+                }
+            }
+            
+            // Try MM-DD-YYYY format
+            const usDashMatch = cleanStr.match(patterns[4].regex);
+            if (usDashMatch) {
+                const [, month, day, year] = usDashMatch;
+                const monthNum = parseInt(month);
+                const dayNum = parseInt(day);
+                const yearNum = parseInt(year);
+                
+                if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+                    const date = new Date(yearNum, monthNum - 1, dayNum);
+                    if (!isNaN(date.getTime())) {
+                        return date;
+                    }
+                }
+            }
+            
+            // Fallback to native Date parsing (less reliable but handles many formats)
+            const fallbackDate = new Date(cleanStr);
+            if (!isNaN(fallbackDate.getTime())) {
+                return fallbackDate;
+            }
+            
+            return null;
+        }
+        
+        function formatDate(date) {
+            if (!date || isNaN(date.getTime())) return '';
+            return date.toISOString().split('T')[0]; // YYYY-MM-DD format
+        }
+
+        function processData() {
+            if (!csvData) {
+                showStatus('Please upload a CSV file first.', 'error');
+                return;
+            }
+
+            const targetDateStr = document.getElementById('targetDate').value;
+            if (!targetDateStr) {
+                showStatus('Please select a target date.', 'error');
+                return;
+            }
+
+            setLoading(true);
+            showStatus('Processing data...', 'info');
+
+            try {
+                setTimeout(() => {
+                    try {
+                        const targetDate = new Date(targetDateStr + 'T00:00:00');
+                        const rows = parseCSV(csvData);
+                        
+                        const samples = [];
+                        let headerRow = [];
+                        
+                        let i = 0;
+                        while (i < rows.length) {
+                            const row = rows[i];
+                            
+                            // Skip empty rows
+                            if (!row.some(cell => cell.trim())) {
+                                i++;
+                                continue;
+                            }
+                            
+                            if (isHeaderRow(row)) {
+                                headerRow = row.map(h => h.trim());
+                                
+                                if (i + 1 < rows.length && isDataRow(rows[i + 1])) {
+                                    const valueRow = rows[i + 1];
+                                    const sample = {};
+                                    
+                                    for (let j = 0; j < headerRow.length && j < valueRow.length; j++) {
+                                        const header = headerRow[j];
+                                        const value = valueRow[j].trim();
+                                        
+                                        if (header) {
+                                            if (value === "< LOD" || value === "<LOD") {
+                                                sample[header] = null;
+                                            } else {
+                                                const numValue = parseFloat(value);
+                                                sample[header] = isNaN(numValue) ? value : numValue;
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Filter by date
+                                    const dtVal = sample["DateTime"] || "";
+                                    const sampleDateStr = String(dtVal).split(' ')[0];
+                                    
+                                    if (sampleDateStr) {
+                                        const sampleDate = parseDate(sampleDateStr);
+                                        
+                                        if (sampleDate && formatDate(sampleDate) === formatDate(targetDate)) {
+                                            samples.push(sample);
+                                        }
+                                    }
+                                    
+                                    i += 2;
+                                } else {
+                                    i++;
+                                }
+                            } else {
+                                i++;
+                            }
+                        }
+                        
+                        if (samples.length === 0) {
+                            setLoading(false);
+                            showStatus(`No samples found for date: ${formatDate(targetDate)}`, 'error');
+                            return;
+                        }
+                        
+                        // Find metadata columns
+                        const firstErrIdx = headerRow.findIndex(h => h.endsWith("Err"));
+                        if (firstErrIdx === -1) {
+                            setLoading(false);
+                            showStatus('No "Err" columns found, cannot determine elements vs metadata.', 'error');
+                            return;
+                        }
+                        
+                        const firstElementIdx = firstErrIdx - 1;
+                        const metadataCols = headerRow.slice(0, firstElementIdx);
+                        
+                        // Process each sample
+                        const processedSamples = [];
+                        const allElements = new Set();
+                        
+                        for (let sample of samples) {
+                            const metadataKeys = Object.keys(sample).filter(k => metadataCols.includes(k));
+                            const elementErrorKeys = Object.keys(sample).filter(k => !metadataCols.includes(k));
+                            
+                            const elementErrorKeysSorted = headerRow.filter(k => elementErrorKeys.includes(k));
+                            
+                            const elements = {};
+                            let skipNext = false;
+                            
+                            for (let j = 0; j < elementErrorKeysSorted.length; j++) {
+                                if (skipNext) {
+                                    skipNext = false;
+                                    continue;
+                                }
+                                
+                                const key = elementErrorKeysSorted[j];
+                                if (key.endsWith(" Err")) continue;
+                                
+                                const val = sample[key];
+                                let err = null;
+                                
+                                // Look for corresponding error column
+                                const errKey = `${key} Err`;
+                                if (elementErrorKeysSorted.includes(errKey)) {
+                                    err = sample[errKey];
+                                }
+                                
+                                elements[key] = { Val: val, Err: err };
+                                allElements.add(key);
+                            }
+                            
+                            // Sort elements alphabetically
+                            const sortedElementNames = Object.keys(elements).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+                            
+                            const flatSample = {};
+                            
+                            // Add metadata
+                            for (let mk of metadataCols) {
+                                flatSample[mk] = sample[mk];
+                            }
+                            
+                            // Add elements and errors
+                            for (let elemName of sortedElementNames) {
+                                flatSample[elemName] = elements[elemName].Val;
+                                if (elements[elemName].Err !== null && elements[elemName].Err !== undefined) {
+                                    flatSample[`${elemName} Err`] = elements[elemName].Err;
+                                }
+                            }
+                            
+                            processedSamples.push(flatSample);
+                        }
+                        
+                        // Create final column order
+                        const finalMetadataCols = metadataCols.filter(col => 
+                            processedSamples.some(s => col in s)
+                        );
+                        const sortedAllElements = Array.from(allElements).sort((a, b) => 
+                            a.toLowerCase().localeCompare(b.toLowerCase())
+                        );
+                        
+                        const finalColumns = [...finalMetadataCols];
+                        for (let elemName of sortedAllElements) {
+                            finalColumns.push(elemName);
+                            const errCol = `${elemName} Err`;
+                            if (processedSamples.some(s => errCol in s)) {
+                                finalColumns.push(errCol);
+                            }
+                        }
+                        
+                        // Create Excel file
+                        const ws = XLSX.utils.json_to_sheet(processedSamples, { header: finalColumns });
+                        const wb = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(wb, ws, "Results");
+                        
+                        // Download file
+                        const fileName = `Results_${formatDate(targetDate)}.xlsx`;
+                        XLSX.writeFile(wb, fileName);
+                        
+                        setLoading(false);
+                        showStatus(`Successfully processed ${samples.length} samples and exported to ${fileName}`, 'success');
+                        
+                    } catch (error) {
+                        setLoading(false);
+                        console.error('Processing error:', error);
+                        showStatus('Error processing data: ' + error.message, 'error');
+                    }
+                }, 100);
+                
+            } catch (error) {
+                setLoading(false);
+                console.error('Processing error:', error);
+                showStatus('Error processing data: ' + error.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
