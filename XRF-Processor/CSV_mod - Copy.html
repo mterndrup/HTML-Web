@@ -233,53 +233,18 @@ function populateElementsList() {
   updateSelectedCount();
 }
 
-// Handle mode changes
-document.querySelectorAll('input[name="chartMode"]').forEach(radio => {
-  radio.addEventListener("change", () => {
-    // Clear selected elements
-    selectedElements.clear();
-
-    // Remove all highlights
-    document.querySelectorAll(".element-card.selected").forEach(card => {
-      card.classList.remove("selected");
-    });
-
-    updateSelectedCount();
-    updateGenerateButton();
-    console.log("Chart mode changed, cleared selections.");
-  });
-});
-
 function toggleElementSelection(element, cardElement) {
-  const chartMode = document.querySelector('input[name="chartMode"]:checked').value;
-
-  if (chartMode === "individual") {
-    // Clear all previous selections
-    selectedElements.clear();
-    document.querySelectorAll(".element-card.selected").forEach(card => {
-      card.classList.remove("selected");
-    });
-
-    // Add only the clicked element
-    selectedElements.add(element);
-    cardElement.classList.add("selected");
+  if (selectedElements.has(element)) {
+    selectedElements.delete(element);
+    cardElement.classList.remove('selected');
   } else {
-    // Normal toggle behavior for averages mode
-    if (selectedElements.has(element)) {
-      selectedElements.delete(element);
-      cardElement.classList.remove("selected");
-    } else {
-      selectedElements.add(element);
-      cardElement.classList.add("selected");
-    }
+    selectedElements.add(element);
+    cardElement.classList.add('selected');
   }
-
   updateSelectedCount();
   updateGenerateButton();
-  console.log("Selected elements:", Array.from(selectedElements));
+  console.log('Selected elements:', Array.from(selectedElements));
 }
-
-
 
 function updateSelectedCount() {
   const selectedCountElement = document.getElementById('selectedCount');
@@ -769,51 +734,54 @@ function generateAveragesChart(ctx, selectedElementsArray, scale, units) {
 }
 
 function generateIndividualChart(ctx, selectedElementsArray, scale, units) {
-  // For individual mode, we should only have one element
-  if (selectedElementsArray.length !== 1) {
-    console.error('Individual mode should only have one element selected');
-    return;
-  }
+  // Prepare data for individual samples chart
+  const datasets = [];
+  const colors = [
+    '#4f46e5', '#7c3aed', '#dc2626', '#ea580c', '#d97706', '#ca8a04', '#65a30d',
+    '#16a34a', '#059669', '#0891b2', '#0284c7', '#2563eb', '#4338ca', '#7c2d12',
+    '#be185d', '#be123c', '#991b1b', '#92400e', '#a16207', '#4d7c0f', '#15803d'
+  ];
   
-  const element = selectedElementsArray[0];
-  const elementData = [];
-  const sampleLabels = [];
-  
-  displayedRows.forEach((row, sampleIndex) => {
-    // Use File# from the data as the label, fallback to sample index
-    const fileNum = row['File#'] || `Sample ${sampleIndex + 1}`;
-    sampleLabels.push(fileNum);
+  selectedElementsArray.forEach((element, elementIndex) => {
+    const elementData = [];
     
-    let val = row[element] || "";
-    
-    // Handle <LOD values and empty values
-    if (val === "<LOD" || val === "< LOD" || val === "" || isNaN(val)) {
-      elementData.push(null); // null values won't be displayed
-    } else {
-      const numVal = parseFloat(val);
-      if (!isNaN(numVal)) {
-        const scaledVal = scale ? numVal * 10000 : numVal;
-        elementData.push(Math.round(scaledVal * 100) / 100);
+    displayedRows.forEach((row, sampleIndex) => {
+      let val = row[element] || "";
+      
+      // Handle <LOD values and empty values
+      if (val === "<LOD" || val === "< LOD" || val === "" || isNaN(val)) {
+        elementData.push(null); // null values won't be displayed
       } else {
-        elementData.push(null);
+        const numVal = parseFloat(val);
+        if (!isNaN(numVal)) {
+          const scaledVal = scale ? numVal * 10000 : numVal;
+          elementData.push(Math.round(scaledVal * 100) / 100);
+        } else {
+          elementData.push(null);
+        }
       }
-    }
+    });
+    
+    datasets.push({
+      label: element,
+      data: elementData,
+      backgroundColor: colors[elementIndex % colors.length] + '80', // Add transparency
+      borderColor: colors[elementIndex % colors.length],
+      borderWidth: 1,
+      borderRadius: 4,
+      borderSkipped: false
+    });
   });
   
-  // Create individual samples chart with single element
+  // Create sample labels (Sample 1, Sample 2, etc.)
+  const sampleLabels = displayedRows.map((_, index) => `Sample ${index + 1}`);
+  
+  // Create individual samples chart
   chart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: sampleLabels,
-      datasets: [{
-        label: `${element} (${units})`,
-        data: elementData,
-        backgroundColor: 'rgba(79, 70, 229, 0.6)',
-        borderColor: 'rgba(79, 70, 229, 1)',
-        borderWidth: 2,
-        borderRadius: 8,
-        borderSkipped: false
-      }]
+      datasets: datasets
     },
     options: {
       responsive: true,
@@ -821,24 +789,16 @@ function generateIndividualChart(ctx, selectedElementsArray, scale, units) {
       plugins: {
         title: {
           display: true,
-          text: `${element} Concentrations by Sample`,
+          text: `Individual Sample Concentrations`,
           font: { size: 16, weight: 'bold' },
           color: '#4f46e5'
         },
         legend: {
           display: true,
-          position: 'top'
-        },
-        tooltip: {
-          callbacks: {
-            title: function(context) {
-              // Show the File# in the tooltip title
-              return context[0].label;
-            },
-            label: function(context) {
-              const value = context.parsed.y;
-              return value !== null ? `${element}: ${value} ${units}` : `${element}: <LOD`;
-            }
+          position: 'top',
+          labels: {
+            boxWidth: 12,
+            padding: 10
           }
         }
       },
@@ -847,7 +807,7 @@ function generateIndividualChart(ctx, selectedElementsArray, scale, units) {
           beginAtZero: true,
           title: {
             display: true,
-            text: `${element} Concentration (${units})`,
+            text: `Concentration (${units})`,
             font: { size: 14, weight: 'bold' }
           },
           grid: {
@@ -857,7 +817,7 @@ function generateIndividualChart(ctx, selectedElementsArray, scale, units) {
         x: {
           title: {
             display: true,
-            text: 'Sample Files',
+            text: 'Samples',
             font: { size: 14, weight: 'bold' }
           },
           grid: {

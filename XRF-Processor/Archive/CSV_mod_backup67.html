@@ -34,9 +34,6 @@
   .date-selector select { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; }
   .checkbox-wrapper { display: flex; align-items: center; gap: 10px; background: white;
     padding: 12px 20px; border-radius: 10px; border: 1px solid #e2e8f0; }
-  .radio-group { display: flex; align-items: center; gap: 15px; background: white;
-    padding: 12px 20px; border-radius: 10px; border: 1px solid #e2e8f0; }
-  .radio-option { display: flex; align-items: center; gap: 8px; }
   .filter-button { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
     color: white; padding: 12px 24px; border: none; border-radius: 10px; font-weight: 600; }
   .download-button { background: linear-gradient(135deg, #059669 0%, #047857 100%);
@@ -46,42 +43,6 @@
   table { width: 100%; border-collapse: collapse; }
   th { background: #f1f5f9; padding: 10px; font-weight: 600; border-bottom: 2px solid #e2e8f0; }
   td { padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: 12px; white-space: nowrap; }
-#elementsList {
-  grid-template-columns: repeat(auto-fit, minmax(55px, 1fr)) !important;
-  gap: 0 !important;
-}
-.element-card {
-  background: #f1f5f9;
-  padding: 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 0;
-  text-align: center;
-  font-weight: 600;
-  color: #374151;
-  cursor: pointer;
-  transition: background 0.3s ease, color 0.3s ease;
-  margin: -1px 0 0 -1px;   /* 🔑 overlap borders so no doubles */
-}
-
-.element-card:hover {
-  background: #e2e8f0;
-}
-
-.element-card.selected {
-  background: #4f46e5;
-  color: white;
-}
-
-.date-info {
-  background: #e0e7ff;
-  border: 1px solid #c7d2fe;
-  border-radius: 10px;
-  padding: 15px;
-  margin: 15px 0;
-  color: #3730a3;
-  font-weight: 500;
-}
-
   #csvFile { display: none; }
 </style>
 </head>
@@ -131,52 +92,18 @@
   </div>
 
   <div id="analysis-tools" class="tab-content">
-    <div class="control-section">
-      <h3 style="margin-bottom: 20px; color: #4f46e5;">Available Elements for Analysis</h3>
-      <div id="elementsList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px;">
-        <!-- Elements will be populated here -->
-      </div>
-      <div style="margin-top: 20px; text-align: center;">
-        <div class="radio-group" style="display: inline-flex; margin-right: 20px;">
-          <div class="radio-option">
-            <input type="radio" id="chartModeIndividual" name="chartMode" value="individual">
-            <label for="chartModeIndividual">Individual Samples</label>
-          </div>
-          <div class="radio-option">
-            <input type="radio" id="chartModeAverages" name="chartMode" value="averages" checked>
-            <label for="chartModeAverages">Averages</label>
-          </div>
-        </div>
-        <button class="filter-button" id="generateChart" onclick="generateChart()" disabled>📊 Generate Chart</button>
-        <span id="selectedCount" style="margin-left: 15px; color: #64748b; font-weight: 500;">0 elements selected</span>
-      </div>
-    </div>
-    
-    <div id="chartSection" style="display: none;">
-      <div class="control-section">
-        <h3 style="margin-bottom: 20px; color: #4f46e5;">Element Analysis Chart</h3>
-        <div id="dateRangeInfo" class="date-info" style="display: none;">
-          <!-- Date range information will be displayed here -->
-        </div>
-        <div style="position: relative; height: 400px; width: 100%;">
-          <canvas id="averageChart"></canvas>
-        </div>
-      </div>
-    </div>
+    <p style="padding:20px; color:#64748b;">🔬 Analysis Tools coming soon…</p>
   </div>
-  
   <div id="quality-control" class="tab-content">
     <p style="padding:20px; color:#64748b;">✅ Quality Control features coming soon…</p>
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 <script>
 let allSamples = [];
 let displayedRows = [];
 let originalHeaders = [];
 let elementCols = [];
-let chart = null;
 
 // --- Tab switching ---
 document.querySelectorAll('.tab').forEach(tab => {
@@ -185,142 +112,8 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     this.classList.add('active');
     document.getElementById(this.dataset.tab).classList.add('active');
-    
-    // Populate elements list when Analysis Tools tab is clicked
-    if (this.dataset.tab === 'analysis-tools') {
-      populateElementsList();
-    }
   });
 });
-
-// --- Chart mode radio listeners ---
-document.querySelectorAll('input[name="chartMode"]').forEach(radio => {
-  radio.addEventListener('change', function() {
-    // Clear existing chart when mode changes
-    if (chart) {
-      chart.destroy();
-      chart = null;
-    }
-    document.getElementById('chartSection').style.display = 'none';
-    updateGenerateButton();
-  });
-});
-
-// --- Populate Analysis Tools elements list ---
-let selectedElements = new Set();
-
-function populateElementsList() {
-  const targetElements = ['As', 'Au', 'Ba', 'Bi', 'Ca', 'Cd', 'Ce', 'Co', 'Cr', 'Cu', 
-                         'Fe', 'Ga', 'Hf', 'Hg', 'La', 'Mn', 'Mo', 'Nb', 'Pb', 'Pd', 
-                         'Pt', 'Rb', 'Sb', 'Se', 'Sn', 'Sr', 'Ta', 'Te', 'Th', 'Ti', 
-                         'Tl', 'U', 'V', 'W', 'Y', 'Zn', 'Zr'];
-  
-  const elementsList = document.getElementById('elementsList');
-  if (!elementsList) return; // Exit if elements list doesn't exist
-  
-  elementsList.innerHTML = '';
-  selectedElements.clear();
-  
-  targetElements.forEach(element => {
-    const elementCard = document.createElement('div');
-    elementCard.className = 'element-card';
-    elementCard.textContent = element;
-    elementCard.dataset.element = element;
-    elementCard.onclick = () => toggleElementSelection(element, elementCard);
-    elementsList.appendChild(elementCard);
-  });
-  
-  updateSelectedCount();
-}
-
-// Handle mode changes
-document.querySelectorAll('input[name="chartMode"]').forEach(radio => {
-  radio.addEventListener("change", () => {
-    // Clear selected elements
-    selectedElements.clear();
-
-    // Remove all highlights
-    document.querySelectorAll(".element-card.selected").forEach(card => {
-      card.classList.remove("selected");
-    });
-
-    updateSelectedCount();
-    updateGenerateButton();
-    console.log("Chart mode changed, cleared selections.");
-  });
-});
-
-function toggleElementSelection(element, cardElement) {
-  const chartMode = document.querySelector('input[name="chartMode"]:checked').value;
-
-  if (chartMode === "individual") {
-    // Clear all previous selections
-    selectedElements.clear();
-    document.querySelectorAll(".element-card.selected").forEach(card => {
-      card.classList.remove("selected");
-    });
-
-    // Add only the clicked element
-    selectedElements.add(element);
-    cardElement.classList.add("selected");
-  } else {
-    // Normal toggle behavior for averages mode
-    if (selectedElements.has(element)) {
-      selectedElements.delete(element);
-      cardElement.classList.remove("selected");
-    } else {
-      selectedElements.add(element);
-      cardElement.classList.add("selected");
-    }
-  }
-
-  updateSelectedCount();
-  updateGenerateButton();
-  console.log("Selected elements:", Array.from(selectedElements));
-}
-
-
-
-function updateSelectedCount() {
-  const selectedCountElement = document.getElementById('selectedCount');
-  if (!selectedCountElement) return; // Exit if element doesn't exist
-  
-  const count = selectedElements.size;
-  selectedCountElement.textContent = `${count} element${count !== 1 ? 's' : ''} selected`;
-}
-
-function updateGenerateButton() {
-  const generateBtn = document.getElementById('generateChart');
-  if (generateBtn) {
-    generateBtn.disabled = selectedElements.size === 0 || displayedRows.length === 0;
-  }
-}
-
-function getDateRangeText() {
-  const startDate = document.getElementById('startDateSelect');
-  const endDate = document.getElementById('endDateSelect');
-  
-  const startValue = startDate.value;
-  const endValue = endDate.value;
-  const startText = startValue ? startDate.options[startDate.selectedIndex].text : null;
-  const endText = endValue ? endDate.options[endDate.selectedIndex].text : null;
-  
-  if (!startText && !endText) {
-    return "All available dates";
-  } else if (startText && endText) {
-    if (startText === endText) {
-      return `Date: ${startText}`;
-    } else {
-      return `Date Range: ${startText} to ${endText}`;
-    }
-  } else if (startText) {
-    return `From: ${startText}`;
-  } else if (endText) {
-    return `Until: ${endText}`;
-  }
-  
-  return "All available dates";
-}
 
 // --- Helper functions ---
 function pad2(n){ return String(n).padStart(2,'0'); }
@@ -461,7 +254,6 @@ document.getElementById("csvFile").addEventListener("change", function() {
     populateDateDropdowns(rows);
     renderTable(displayedRows);
     document.getElementById("downloadBtn").disabled = false;
-    updateGenerateButton();
   };
   reader.readAsText(file,"UTF-8");
 });
@@ -500,13 +292,6 @@ function populateDateDropdowns(rows) {
 function filterByDateRange() {
   const startIso = document.getElementById("startDateSelect").value;
   const endIso = document.getElementById("endDateSelect").value;
-  
-  // Clear existing chart when date range changes
-  if (chart) {
-    chart.destroy();
-    chart = null;
-  }
-  document.getElementById('chartSection').style.display = 'none';
   
   if (!startIso && !endIso) {
     displayedRows = allSamples.slice();
@@ -552,16 +337,11 @@ function filterByDateRange() {
   });
 
   renderTable(displayedRows);
-  updateGenerateButton();
 }
 
 // --- Scaling checkbox ---
 document.getElementById("scaleValues").addEventListener("change", function(){
   if (displayedRows.length>0) renderTable(displayedRows);
-  // Regenerate chart if it exists
-  if (chart && selectedElements.size > 0) {
-    generateChart();
-  }
 });
 
 // --- Render table ---
@@ -627,254 +407,6 @@ function downloadDisplayedRows() {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-}
-
-// --- Chart generation ---
-function generateChart() {
-  if (selectedElements.size === 0 || displayedRows.length === 0) {
-    return;
-  }
-  
-  const chartMode = document.querySelector('input[name="chartMode"]:checked').value;
-  const scale = document.getElementById("scaleValues").checked;
-  const selectedElementsArray = Array.from(selectedElements).sort();
-  
-  // Show chart section
-  document.getElementById('chartSection').style.display = 'block';
-  
-  // Update date range info
-  const dateRangeInfo = document.getElementById('dateRangeInfo');
-  const dateRangeText = getDateRangeText();
-  dateRangeInfo.innerHTML = `📅 ${dateRangeText} • ${displayedRows.length} samples analyzed`;
-  dateRangeInfo.style.display = 'block';
-  
-  // Destroy existing chart if it exists
-  if (chart) {
-    chart.destroy();
-    chart = null;
-  }
-  
-  // Get canvas and reset its size
-  const canvas = document.getElementById('averageChart');
-  const ctx = canvas.getContext('2d');
-  const units = scale ? "ppm" : "raw units";
-  
-  if (chartMode === 'averages') {
-    generateAveragesChart(ctx, selectedElementsArray, scale, units);
-  } else {
-    generateIndividualChart(ctx, selectedElementsArray, scale, units);
-  }
-}
-
-function generateAveragesChart(ctx, selectedElementsArray, scale, units) {
-  // Calculate averages for selected elements
-  const averages = {};
-  const validCounts = {};
-  
-  selectedElementsArray.forEach(element => {
-    averages[element] = 0;
-    validCounts[element] = 0;
-  });
-  
-  displayedRows.forEach(row => {
-    selectedElementsArray.forEach(element => {
-      let val = row[element] || "";
-      
-      // Skip <LOD values and empty values
-      if (val === "<LOD" || val === "< LOD" || val === "" || isNaN(val)) return;
-      
-      const numVal = parseFloat(val);
-      if (!isNaN(numVal)) {
-        // Apply scaling if enabled (same logic as in renderTable)
-        const scaledVal = scale ? numVal * 10000 : numVal;
-        averages[element] += scaledVal;
-        validCounts[element]++;
-      }
-    });
-  });
-  
-  // Calculate final averages
-  const chartData = {
-    labels: [],
-    values: []
-  };
-  
-  selectedElementsArray.forEach(element => {
-    if (validCounts[element] > 0) {
-      const avg = averages[element] / validCounts[element];
-      chartData.labels.push(element);
-      chartData.values.push(Math.round(avg * 100) / 100); // Round to 2 decimal places
-    }
-  });
-  
-  // Create averages chart
-  chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: chartData.labels,
-      datasets: [{
-        label: `Average Concentration (${units})`,
-        data: chartData.values,
-        backgroundColor: 'rgba(79, 70, 229, 0.6)',
-        borderColor: 'rgba(79, 70, 229, 1)',
-        borderWidth: 2,
-        borderRadius: 8,
-        borderSkipped: false
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        title: {
-          display: true,
-          text: `Average Element Concentrations`,
-          font: { size: 16, weight: 'bold' },
-          color: '#4f46e5'
-        },
-        legend: {
-          display: true,
-          position: 'top'
-        }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: `Concentration (${units})`,
-            font: { size: 14, weight: 'bold' }
-          },
-          grid: {
-            color: 'rgba(0,0,0,0.1)'
-          }
-        },
-        x: {
-          title: {
-            display: true,
-            text: 'Elements',
-            font: { size: 14, weight: 'bold' }
-          },
-          grid: {
-            display: false
-          }
-        }
-      },
-      animation: {
-        duration: 800,
-        easing: 'easeOutQuart'
-      }
-    }
-  });
-}
-
-function generateIndividualChart(ctx, selectedElementsArray, scale, units) {
-  // For individual mode, we should only have one element
-  if (selectedElementsArray.length !== 1) {
-    console.error('Individual mode should only have one element selected');
-    return;
-  }
-  
-  const element = selectedElementsArray[0];
-  const elementData = [];
-  const sampleLabels = [];
-  
-  displayedRows.forEach((row, sampleIndex) => {
-    // Use File# from the data as the label, fallback to sample index
-    const fileNum = row['File#'] || `Sample ${sampleIndex + 1}`;
-    sampleLabels.push(fileNum);
-    
-    let val = row[element] || "";
-    
-    // Handle <LOD values and empty values
-    if (val === "<LOD" || val === "< LOD" || val === "" || isNaN(val)) {
-      elementData.push(null); // null values won't be displayed
-    } else {
-      const numVal = parseFloat(val);
-      if (!isNaN(numVal)) {
-        const scaledVal = scale ? numVal * 10000 : numVal;
-        elementData.push(Math.round(scaledVal * 100) / 100);
-      } else {
-        elementData.push(null);
-      }
-    }
-  });
-  
-  // Create individual samples chart with single element
-  chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: sampleLabels,
-      datasets: [{
-        label: `${element} (${units})`,
-        data: elementData,
-        backgroundColor: 'rgba(79, 70, 229, 0.6)',
-        borderColor: 'rgba(79, 70, 229, 1)',
-        borderWidth: 2,
-        borderRadius: 8,
-        borderSkipped: false
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        title: {
-          display: true,
-          text: `${element} Concentrations by Sample`,
-          font: { size: 16, weight: 'bold' },
-          color: '#4f46e5'
-        },
-        legend: {
-          display: true,
-          position: 'top'
-        },
-        tooltip: {
-          callbacks: {
-            title: function(context) {
-              // Show the File# in the tooltip title
-              return context[0].label;
-            },
-            label: function(context) {
-              const value = context.parsed.y;
-              return value !== null ? `${element}: ${value} ${units}` : `${element}: <LOD`;
-            }
-          }
-        }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: `${element} Concentration (${units})`,
-            font: { size: 14, weight: 'bold' }
-          },
-          grid: {
-            color: 'rgba(0,0,0,0.1)'
-          }
-        },
-        x: {
-          title: {
-            display: true,
-            text: 'Sample Files',
-            font: { size: 14, weight: 'bold' }
-          },
-          grid: {
-            display: false
-          }
-        }
-      },
-      animation: {
-        duration: 800,
-        easing: 'easeOutQuart'
-      },
-      interaction: {
-        mode: 'index',
-        intersect: false
-      }
-    }
-  });
 }
 </script>
 </body>
