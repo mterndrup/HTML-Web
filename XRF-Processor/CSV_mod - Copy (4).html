@@ -211,135 +211,118 @@ function generateReliabilityHeatmap() {
     return;
   }
 
-  // Get all elements that have error data
-  const elementsWithErrors = new Set();
+  const elementErrors = {};
+  const elementValues = {};
+
+  // --- Collect values & errors ---
   displayedRows.forEach(row => {
     Object.keys(row).forEach(key => {
       if (key.endsWith("Err")) {
         const element = key.replace("Err", "");
-        if (row[element] !== undefined) {
-          elementsWithErrors.add(element);
+        const errVal = parseFloat(row[key]);
+
+        // --- Handle main element value ---
+        let rawVal = row[element];
+        let mainVal = 0;
+        if (rawVal !== undefined) {
+          if (typeof rawVal === "string" && (rawVal.includes("<LOD") || rawVal === "")) {
+            mainVal = 0; // treat <LOD and empty as 0
+          } else {
+            const parsed = parseFloat(rawVal);
+            if (!isNaN(parsed)) mainVal = parsed;
+          }
+        }
+
+        if (!isNaN(errVal) && errVal > 0) {
+          if (!elementErrors[element]) {
+            elementErrors[element] = [];
+            elementValues[element] = [];
+          }
+          elementErrors[element].push(errVal);
+          elementValues[element].push(mainVal);
         }
       }
     });
   });
 
-  const elements = Array.from(elementsWithErrors).sort();
-  
-  if (elements.length === 0) {
+  // --- Compute relative errors ---
+  const elementReliability = {};
+  Object.keys(elementErrors).forEach(el => {
+    const errs = elementErrors[el];
+    const vals = elementValues[el];
+    if (errs.length > 0) {
+      const meanErr = errs.reduce((a,b)=>a+b,0) / errs.length;
+      const meanVal = vals.reduce((a,b)=>a+b,0) / vals.length;
+      const relErr = meanVal > 0 ? meanErr / meanVal : 1.0; // high relative error if mean is 0
+      elementReliability[el] = relErr;
+    }
+  });
+
+  // --- Sort by reliability (lowest relative error = most reliable) ---
+  const sorted = Object.entries(elementReliability).sort((a,b) => a[1] - b[1]);
+
+  if (sorted.length === 0) {
     alert("No element error data found in the loaded samples.");
     return;
   }
 
-  // Create heatmap data: each cell represents relative error for element in sample
-  const heatmapData = [];
+  // --- Create bar chart data ---
+  const labels = sorted.map(entry => entry[0]);
+  const values = sorted.map(entry => entry[1]);
   
-  displayedRows.forEach((row, sampleIndex) => {
-    const sampleId = row['File#'] || `Sample ${sampleIndex + 1}`;
-    
-    elements.forEach(element => {
-      const value = parseFloat(row[element]) || 0;
-      const error = parseFloat(row[element + 'Err']) || 0;
-      
-      let relativeError = null;
-      
-      // Calculate relative error
-      if (error > 0 && value > 0) {
-        relativeError = error / value;
-      } else if (row[element] && (row[element].includes('<LOD') || row[element] === '')) {
-        relativeError = null; // No data point for <LOD
-      } else {
-        relativeError = null; // No valid data
-      }
-      
-      heatmapData.push({
-        x: sampleIndex,
-        y: element,
-        v: relativeError,
-        sampleId: sampleId
-      });
-    });
+  // Generate colors based on reliability
+  const backgroundColors = values.map(value => {
+    if (!isFinite(value)) return 'rgba(156,163,175,0.8)'; // gray
+    if (value < 0.05) return 'rgba(16,185,129,0.8)';   // green - excellent
+    if (value < 0.1)  return 'rgba(132,204,22,0.8)';   // lime - very good  
+    if (value < 0.2)  return 'rgba(234,179,8,0.8)';    // yellow - good
+    if (value < 0.5)  return 'rgba(249,115,22,0.8)';   // orange - fair
+    return 'rgba(239,68,68,0.8)';                       // red - poor
   });
+
+  const borderColors = backgroundColors.map(color => color.replace('0.8', '1.0'));
 
   const ctx = document.getElementById("reliabilityHeatmap").getContext("2d");
   if (window.reliabilityChart) {
     window.reliabilityChart.destroy();
   }
 
-  // Create a scatter plot that looks like a heatmap
-  const datasets = elements.map((element, elementIndex) => {
-    const elementData = heatmapData
-      .filter(d => d.y === element)
-      .map(d => ({
-        x: d.x,
-        y: elementIndex,
-        relativeError: d.v,
-        sampleId: d.sampleId,
-        element: d.y
-      }));
-
-    return {
-      label: element,
-      data: elementData,
-      backgroundColor: function(context) {
-        const point = context.parsed;
-        const dataPoint = elementData[context.dataIndex];
-        const value = dataPoint ? dataPoint.relativeError : null;
-        
-        if (value === null) return 'rgba(255,255,255,0.8)'; // white for no data
-        if (value < 0.05) return 'rgba(16,185,129,0.8)';   // green - excellent
-        if (value < 0.1)  return 'rgba(132,204,22,0.8)';   // lime - very good  
-        if (value < 0.2)  return 'rgba(234,179,8,0.8)';    // yellow - good
-        if (value < 0.5)  return 'rgba(249,115,22,0.8)';   // orange - fair
-        return 'rgba(239,68,68,0.8)';                       // red - poor
-      },
-      borderColor: 'rgba(0,0,0,0.1)',
-      borderWidth: 1,
-      pointRadius: function(context) {
-        const canvasWidth = context.chart.width;
-        const numSamples = displayedRows.length;
-        return Math.max(3, Math.min(20, canvasWidth / numSamples / 2));
-      },
-      showLine: false
-    };
-  });
-
   window.reliabilityChart = new Chart(ctx, {
-    type: 'scatter',
+    type: 'bar',
     data: {
-      datasets: datasets
+      labels: labels,
+      datasets: [{
+        label: 'Relative Error (Lower = More Reliable)',
+        data: values,
+        backgroundColor: backgroundColors,
+        borderColor: borderColors,
+        borderWidth: 2,
+        borderRadius: 6,
+        borderSkipped: false
+      }]
     },
     options: {
+      indexAxis: 'y', // horizontal bars
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         title: {
           display: true,
-          text: 'Reliability Heatmap of Elements Across All Samples',
+          text: 'Element Reliability Ranking (Based on Relative Error)',
           font: { size: 16, weight: 'bold' },
           color: '#4f46e5'
         },
         legend: {
-          display: false // Hide legend as it would be too cluttered
+          display: true,
+          position: 'top'
         },
         tooltip: {
           callbacks: {
-            title: function(context) {
-              const point = context[0];
-              const dataPoint = datasets[0].data[point.dataIndex];
-              return `Sample: ${dataPoint.sampleId}`;
-            },
             label: function(context) {
-              const datasetIndex = context.datasetIndex;
-              const dataPoint = datasets[datasetIndex].data[context.dataIndex];
-              const element = dataPoint.element;
-              const relError = dataPoint.relativeError;
-              
-              if (relError === null) {
-                return `${element}: No data or <LOD`;
-              }
-              
+              const element = context.label;
+              const relError = context.parsed.x;
               const percentage = (relError * 100).toFixed(2);
+              
               let reliability = 'Poor';
               if (relError < 0.05) reliability = 'Excellent';
               else if (relError < 0.1) reliability = 'Very Good';
@@ -353,52 +336,40 @@ function generateReliabilityHeatmap() {
       },
       scales: {
         x: {
-          type: 'linear',
-          position: 'bottom',
+          beginAtZero: true,
           title: {
             display: true,
-            text: 'Samples',
+            text: 'Relative Error (Error/Value)',
             font: { size: 14, weight: 'bold' }
           },
-          min: -0.5,
-          max: displayedRows.length - 0.5,
           grid: {
-            display: false
+            color: 'rgba(0,0,0,0.1)'
           },
           ticks: {
-            stepSize: 1,
             callback: function(value) {
-              const sampleIndex = Math.round(value);
-              if (sampleIndex >= 0 && sampleIndex < displayedRows.length) {
-                return displayedRows[sampleIndex]['File#'] || `S${sampleIndex + 1}`;
-              }
-              return '';
+              return (value * 100).toFixed(1) + '%';
             }
           }
         },
         y: {
-          type: 'linear',
           title: {
             display: true,
-            text: 'Elements',
+            text: 'Elements (Most Reliable → Least Reliable)',
             font: { size: 14, weight: 'bold' }
           },
-          min: -0.5,
-          max: elements.length - 0.5,
           grid: {
             display: false
           },
           ticks: {
-            stepSize: 1,
-            callback: function(value) {
-              const elementIndex = Math.round(value);
-              return elements[elementIndex] || '';
+            color: '#374151',
+            font: {
+              weight: 'bold'
             }
           }
         }
       },
       animation: {
-        duration: 800,
+        duration: 1000,
         easing: 'easeOutQuart'
       }
     }
