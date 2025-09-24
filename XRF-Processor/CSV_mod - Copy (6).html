@@ -169,11 +169,6 @@ footer {
         </div>
         <button class="filter-button" id="generateChart" onclick="generateChart()" disabled>📊 Generate Chart</button>
         <span id="selectedCount" style="margin-left: 15px; color: #64748b; font-weight: 500;">0 elements selected</span>
-		<!-- put this right after the Generate Chart button in the Analysis Tools control area -->
-		<div class="checkbox-wrapper" style="display:inline-flex; margin-left:10px; align-items:center;">
-		  <input type="checkbox" id="logScaleCheckbox" />
-		  <label for="logScaleCheckbox" style="margin-left:8px;">Log scale (Y-axis)</label>
-		</div>
       </div>
     </div>
     
@@ -743,7 +738,7 @@ function reorderColumns(blocks) {
     return newRow;
   });
 
-  return { rows: reorderedRows, headers: newOrder, elementCols: elementOrdered };
+  return { rows: reorderedRows, headers: newOrder };
 }
 
 
@@ -768,8 +763,7 @@ document.getElementById("csvFile").addEventListener("change", function() {
       return;
     }
     
-    const { rows, headers, elementCols: reorderedElementCols } = reorderColumns(blocks);
-	elementCols = reorderedElementCols; 
+    const {rows, headers} = reorderColumns(blocks);
     allSamples = rows;
     originalHeaders = headers;
     displayedRows = rows;
@@ -951,99 +945,97 @@ function downloadDisplayedRows() {
   document.body.removeChild(link);
 }
 
+// --- Chart generation ---
 function generateChart() {
   if (selectedElements.size === 0 || displayedRows.length === 0) {
     return;
   }
-
+  
   const chartMode = document.querySelector('input[name="chartMode"]:checked').value;
   const scale = document.getElementById("scaleValues").checked;
-  const useLogScale = !!(document.getElementById("logScaleCheckbox") && document.getElementById("logScaleCheckbox").checked);
   const selectedElementsArray = Array.from(selectedElements).sort();
-
-  // Show chart section + date info
+  
+  // Show chart section
   document.getElementById('chartSection').style.display = 'block';
+  
+  // Update date range info
   const dateRangeInfo = document.getElementById('dateRangeInfo');
   const dateRangeText = getDateRangeText();
   dateRangeInfo.innerHTML = `📅 ${dateRangeText} • ${displayedRows.length} samples analyzed`;
   dateRangeInfo.style.display = 'block';
-
-  // Destroy existing chart if present
+  
+  // Destroy existing chart if it exists
   if (chart) {
     chart.destroy();
     chart = null;
   }
-
+  
+  // Get canvas and reset its size
   const canvas = document.getElementById('averageChart');
   const ctx = canvas.getContext('2d');
   const units = scale ? "ppm" : "raw units";
-
+  
   if (chartMode === 'averages') {
-    generateAveragesChart(ctx, selectedElementsArray, scale, units, useLogScale);
+    generateAveragesChart(ctx, selectedElementsArray, scale, units);
   } else {
-    generateIndividualChart(ctx, selectedElementsArray, scale, units, useLogScale);
+    generateIndividualChart(ctx, selectedElementsArray, scale, units);
   }
 }
 
-// --- Averages chart (replacement) ---
-function generateAveragesChart(ctx, selectedElementsArray, scale, units, useLogScale) {
-  const EPSILON = 1e-6; // small positive value for log scale plotting when actual value is 0 or negative
-  const sums = {};
-  const counts = {};
-
-  selectedElementsArray.forEach(el => { sums[el] = 0; counts[el] = 0; });
-
+function generateAveragesChart(ctx, selectedElementsArray, scale, units) {
+  // Calculate averages for selected elements
+  const averages = {};
+  const validCounts = {};
+  
+  selectedElementsArray.forEach(element => {
+    averages[element] = 0;
+    validCounts[element] = 0;
+  });
+  
   displayedRows.forEach(row => {
     selectedElementsArray.forEach(element => {
       let val = row[element] || "";
 
-      // Convert <LOD to 0 (keeping prior behavior)
+      // Convert <LOD values to 0
       if (val === "<LOD" || val === "< LOD") {
         val = "0";
       }
-      if (val === "" || isNaN(val)) {
-        // skip non-numeric (don't increment counts)
-        return;
-      }
+
+      // Skip empty or non-numeric values
+      if (val === "" || isNaN(val)) return;
+
       const numVal = parseFloat(val);
       if (!isNaN(numVal)) {
+        // Apply scaling if enabled (same logic as in renderTable)
         const scaledVal = scale ? numVal * 10000 : numVal;
-        sums[element] += scaledVal;
-        counts[element] += 1;
+        averages[element] += scaledVal;
+        validCounts[element]++; // count every sample, including <LOD as 0
       }
     });
   });
-
-  const labels = [];
-  const chartValues = [];
-  const rawValues = []; // used for tooltips (original averaged number or null)
-
+  
+  // Calculate final averages
+  const chartData = {
+    labels: [],
+    values: []
+  };
+  
   selectedElementsArray.forEach(element => {
-    if (counts[element] > 0) {
-      const avg = sums[element] / counts[element];
-      labels.push(element);
-      rawValues.push(Math.round(avg * 100) / 100); // human-friendly average
-      // Chart value: if using log scale and avg <= 0, substitute a tiny positive number so log axis can render.
-      if (useLogScale && avg <= 0) {
-        chartValues.push(EPSILON);
-      } else {
-        chartValues.push(Math.round(avg * 100) / 100);
-      }
-    } else {
-      // If element had no numeric values at all, still include as NaN (skip)
-      // skip elements with zero counts to avoid empty labels
+    if (validCounts[element] > 0) {
+      const avg = averages[element] / validCounts[element];
+      chartData.labels.push(element);
+      chartData.values.push(Math.round(avg * 100) / 100); // Round to 2 decimal places
     }
   });
-
-  // Create the Chart
+  
+  // Create averages chart
   chart = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: labels,
+      labels: chartData.labels,
       datasets: [{
         label: `Average Concentration (${units})`,
-        data: chartValues,
-        // If you later want to style different bars (e.g. tiny-epsilon ones), you'd compute backgroundColor as an array.
+        data: chartData.values,
         backgroundColor: 'rgba(79, 70, 229, 0.6)',
         borderColor: 'rgba(79, 70, 229, 1)',
         borderWidth: 2,
@@ -1061,109 +1053,83 @@ function generateAveragesChart(ctx, selectedElementsArray, scale, units, useLogS
           font: { size: 16, weight: 'bold' },
           color: '#4f46e5'
         },
-        legend: { display: true, position: 'top' },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const idx = context.dataIndex;
-              const label = context.chart.data.labels[idx] || '';
-              const raw = rawValues[idx];
-              if (raw === undefined || raw === null) {
-                return `${label}: <LOD or no numeric data`;
-              }
-              // If we substituted EPSILON for plotting, display a clearer message
-              if (useLogScale && raw <= 0) {
-                return `${label}: ${raw} (${units}) — plotted as small positive value for log scale`;
-              }
-              return `${label}: ${raw} ${units}`;
-            }
-          }
+        legend: {
+          display: true,
+          position: 'top'
         }
       },
       scales: {
         y: {
-          type: useLogScale ? 'logarithmic' : 'linear',
-          beginAtZero: !useLogScale, // don't force beginAtZero on log scale
+          beginAtZero: true,
           title: {
             display: true,
             text: `Concentration (${units})`,
             font: { size: 14, weight: 'bold' }
           },
-          grid: { color: 'rgba(0,0,0,0.1)' },
-          ticks: {
-            // For log scale, Chart.js creates reasonable ticks automatically.
-            callback: function(value) {
-              // keep ticks readable
-              if (useLogScale) {
-                // Chart passes numeric tick values (may be powers of 10)
-                return value;
-              }
-              return value;
-            }
+          grid: {
+            color: 'rgba(0,0,0,0.1)'
           }
         },
         x: {
-		  ticks: {
-			autoSkip: false,   // ✅ Always show all x-axis labels
-			maxRotation: 90,
-			minRotation: 45
-		  },
           title: {
             display: true,
             text: 'Elements',
             font: { size: 14, weight: 'bold' }
           },
-          grid: { display: false }
+          grid: {
+            display: false
+          }
         }
       },
-      animation: { duration: 800, easing: 'easeOutQuart' }
+      animation: {
+        duration: 800,
+        easing: 'easeOutQuart'
+      }
     }
   });
 }
 
-// --- Individual chart (replacement) ---
-function generateIndividualChart(ctx, selectedElementsArray, scale, units, useLogScale) {
-  // individual mode should have exactly one selected element
+
+function generateIndividualChart(ctx, selectedElementsArray, scale, units) {
+  // For individual mode, we should only have one element
   if (selectedElementsArray.length !== 1) {
-    console.error('Individual mode should have exactly one element selected');
+    console.error('Individual mode should only have one element selected');
     return;
   }
-
+  
   const element = selectedElementsArray[0];
+  const elementData = [];
   const sampleLabels = [];
-  const chartValues = [];
-  const rawValues = [];
-  const EPSILON = 1e-6;
-
+  
   displayedRows.forEach((row, sampleIndex) => {
+    // Use File# from the data as the label, fallback to sample index
     const fileNum = row['File#'] || `Sample ${sampleIndex + 1}`;
     sampleLabels.push(fileNum);
-
+    
     let val = row[element] || "";
+    
+    // Handle <LOD values and empty values
     if (val === "<LOD" || val === "< LOD" || val === "" || isNaN(val)) {
-      // remember as null for tooltip/display
-      rawValues.push(null);
-      // for plotting: null would hide bar, but for log scale Chart.js can't accept null as numeric tick; use EPSILON to show a small bar
-      chartValues.push(useLogScale ? EPSILON : null);
+      elementData.push(null); // null values won't be displayed
     } else {
       const numVal = parseFloat(val);
-      const scaledVal = scale ? numVal * 10000 : numVal;
-      rawValues.push(Math.round(scaledVal * 100) / 100);
-      if (useLogScale && scaledVal <= 0) {
-        chartValues.push(EPSILON);
+      if (!isNaN(numVal)) {
+        const scaledVal = scale ? numVal * 10000 : numVal;
+        elementData.push(Math.round(scaledVal * 100) / 100);
       } else {
-        chartValues.push(Math.round(scaledVal * 100) / 100);
+        elementData.push(null);
       }
     }
   });
-
+  
+  // Create individual samples chart with single element
   chart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: sampleLabels,
       datasets: [{
         label: `${element} (${units})`,
-        data: chartValues,
+        data: elementData,
         backgroundColor: 'rgba(79, 70, 229, 0.6)',
         borderColor: 'rgba(79, 70, 229, 1)',
         borderWidth: 2,
@@ -1181,49 +1147,54 @@ function generateIndividualChart(ctx, selectedElementsArray, scale, units, useLo
           font: { size: 16, weight: 'bold' },
           color: '#4f46e5'
         },
-        legend: { display: true, position: 'top' },
+        legend: {
+          display: true,
+          position: 'top'
+        },
         tooltip: {
           callbacks: {
-            title: function(context) { return context[0].label; },
+            title: function(context) {
+              // Show the File# in the tooltip title
+              return context[0].label;
+            },
             label: function(context) {
-              const idx = context.dataIndex;
-              const raw = rawValues[idx];
-              if (raw === null || raw === undefined) return `${element}: <LOD or no data`;
-              if (useLogScale && raw <= 0) {
-                return `${element}: ${raw} ${units} — plotted as small positive value for log scale`;
-              }
-              return `${element}: ${raw} ${units}`;
+              const value = context.parsed.y;
+              return value !== null ? `${element}: ${value} ${units}` : `${element}: <LOD`;
             }
           }
         }
       },
       scales: {
         y: {
-          type: useLogScale ? 'logarithmic' : 'linear',
-          beginAtZero: !useLogScale,
+          beginAtZero: true,
           title: {
             display: true,
             text: `${element} Concentration (${units})`,
             font: { size: 14, weight: 'bold' }
           },
-          grid: { color: 'rgba(0,0,0,0.1)' }
+          grid: {
+            color: 'rgba(0,0,0,0.1)'
+          }
         },
         x: {
-          title: { display: true, text: 'Sample Files', font: { size: 14, weight: 'bold' } },
-          grid: { display: false }
+          title: {
+            display: true,
+            text: 'Sample Files',
+            font: { size: 14, weight: 'bold' }
+          },
+          grid: {
+            display: false
+          }
         }
       },
-      animation: { duration: 800, easing: 'easeOutQuart' },
-      interaction: { mode: 'index', intersect: false }
-    }
-  });
-}
-
-const logCheckbox = document.getElementById('logScaleCheckbox');
-if (logCheckbox) {
-  logCheckbox.addEventListener('change', () => {
-    if (chart) {
-      generateChart();
+      animation: {
+        duration: 800,
+        easing: 'easeOutQuart'
+      },
+      interaction: {
+        mode: 'index',
+        intersect: false
+      }
     }
   });
 }

@@ -743,7 +743,7 @@ function reorderColumns(blocks) {
     return newRow;
   });
 
-  return { rows: reorderedRows, headers: newOrder, elementCols: elementOrdered };
+  return { rows: reorderedRows, headers: newOrder };
 }
 
 
@@ -768,8 +768,7 @@ document.getElementById("csvFile").addEventListener("change", function() {
       return;
     }
     
-    const { rows, headers, elementCols: reorderedElementCols } = reorderColumns(blocks);
-	elementCols = reorderedElementCols; 
+    const {rows, headers} = reorderColumns(blocks);
     allSamples = rows;
     originalHeaders = headers;
     displayedRows = rows;
